@@ -75,8 +75,19 @@ export function playlistItems(tracks) {
   ]
 }
 
+export async function startRadio(t) {
+  toast('Buscando música parecida…')
+  try {
+    const n = await api.startRadio(t)
+    toast(n ? `Radio de ${t.artist}: ${n} canciones` : 'No encontré canciones parecidas')
+  } catch (e) {
+    toast(String(e))
+  }
+}
+
 export function trackMenu(event, t, extra = []) {
   const items = [
+    !t.live ? { label: 'Iniciar radio', icon: 'radio', action: () => startRadio(t) } : null,
     { label: 'Reproducir a continuación', icon: 'next', action: () => api.playNext(t).then(() => toast('Sonará a continuación')) },
     { label: 'Añadir a la cola', icon: 'queue', action: () => api.enqueue([t]).then(() => toast('Añadida a la cola')) },
     { label: 'Añadir a playlist', icon: 'list', sub: () => playlistItems([t]) },

@@ -15,6 +15,8 @@ export const api = {
   search: (q) => call('search', { q }),
   album: (id) => call('album', { id }),
   home: () => call('home'),
+  stations: (q) => call('stations', { q }),
+  startRadio: (track) => call('start_radio', { track: plain(track) }),
   play: (tracks, start = 0) => call('play', { tracks: plain(tracks), start }),
   toggle: () => call('toggle'),
   next: () => call('next'),
@@ -55,6 +57,9 @@ export async function boot() {
   })
   await listen('queue', (e) => {
     player.queue = e.payload.tracks
+  })
+  await listen('autoradio', (e) => {
+    toast(`Radio automática: música parecida a ${e.payload}`)
   })
   await listen('download', (e) => {
     const p = e.payload

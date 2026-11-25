@@ -25,6 +25,21 @@ async fn home(core: C<'_>) -> R<Vec<Section>> {
 }
 
 #[tauri::command]
+async fn stations(core: C<'_>, q: String) -> R<Vec<Track>> {
+    core.stations(&q).await
+}
+
+#[tauri::command]
+async fn start_radio(core: C<'_>, track: Track) -> R<usize> {
+    let more = core.radio_for(&track, &[]).await;
+    let mut q = vec![track];
+    q.extend(more);
+    let n = q.len();
+    core.play(q, 0);
+    Ok(n - 1)
+}
+
+#[tauri::command]
 fn play(core: C<'_>, tracks: Vec<Track>, start: usize) {
     core.play(tracks, start)
 }
@@ -172,6 +187,7 @@ fn delete_download(core: C<'_>, id: String) -> R<()> {
 fn settings(core: C<'_>) -> R<serde_json::Value> {
     let mut m = core.lib.settings()?;
     m.insert("download_dir_effective".into(), json!(core.download_dir().to_string_lossy()));
+    m.insert("jamendo_available".into(), json!(core.has_jamendo()));
     Ok(serde_json::Value::Object(m))
 }
 
@@ -197,6 +213,21 @@ pub fn run() {
                         Event::Status(s) => h.emit("player", s),
                         Event::Queue(q, i) => h.emit("queue", json!({ "tracks": q, "index": i })),
                         Event::Started(t) => h.emit("started", t),
+                        Event::Ended(t, ids) => {
+                            let h2 = h.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let core = h2.state::<Arc<Core>>();
+                                if core.lib.setting("autoplay").as_deref() == Some("off") {
+                                    return;
+                                }
+                                let more = core.radio_for(&t, &ids).await;
+                                if !more.is_empty() {
+                                    let _ = h2.emit("autoradio", &t.artist);
+                                    core.play(more, 0);
+                                }
+                            });
+                            Ok(())
+                        }
                     };
                 }),
             )?;
@@ -218,7 +249,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            search, album, home, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
+            search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, delete_download, settings, set_setting
         ])

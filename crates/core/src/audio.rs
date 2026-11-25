@@ -14,6 +14,7 @@ use symphonia::core::units::Time;
 struct Sized<R> {
     inner: R,
     len: Option<u64>,
+    seekable: bool,
 }
 
 impl<R: Read> Read for Sized<R> {
@@ -30,7 +31,7 @@ impl<R: Seek> Seek for Sized<R> {
 
 impl<R: Read + Seek + Send + Sync> MediaSource for Sized<R> {
     fn is_seekable(&self) -> bool {
-        true
+        self.seekable
     }
     fn byte_len(&self) -> Option<u64> {
         self.len
@@ -53,8 +54,8 @@ fn err(e: impl std::fmt::Display) -> SeekError {
 }
 
 impl Stream {
-    pub fn open<R: Read + Seek + Send + Sync + 'static>(reader: R, len: Option<u64>, ext: &str) -> Result<Self, String> {
-        let mss = MediaSourceStream::new(Box::new(Sized { inner: reader, len }), MediaSourceStreamOptions::default());
+    pub fn open<R: Read + Seek + Send + Sync + 'static>(reader: R, len: Option<u64>, ext: &str, seekable: bool) -> Result<Self, String> {
+        let mss = MediaSourceStream::new(Box::new(Sized { inner: reader, len, seekable }), MediaSourceStreamOptions::default());
         let mut hint = Hint::new();
         if !ext.is_empty() {
             hint.with_extension(ext);

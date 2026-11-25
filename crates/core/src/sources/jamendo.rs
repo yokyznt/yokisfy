@@ -58,6 +58,8 @@ fn track(v: &Value) -> Option<Track> {
         license: Some(s(&v["license_ccurl"])).filter(|x| !x.is_empty()),
         downloadable,
         local_path: None,
+        genre: v["musicinfo"]["tags"]["genres"][0].as_str().map(String::from),
+        live: false,
     })
 }
 
@@ -87,6 +89,7 @@ pub async fn search(client: &Client, cid: &str, query: &str) -> Result<SearchRes
     Ok(SearchResults {
         tracks: t?.iter().filter_map(track).collect(),
         albums: a?.iter().filter_map(album).collect(),
+        stations: vec![],
         warnings: vec![],
     })
 }
@@ -99,6 +102,18 @@ pub async fn popular(client: &Client, cid: &str) -> Result<Vec<Track>> {
 
 pub async fn new_albums(client: &Client, cid: &str) -> Result<Vec<Album>> {
     Ok(get(client, "albums", cid, &[("order", "popularity_week"), ("limit", "12"), ("imagesize", "300")]).await?.iter().filter_map(album).collect())
+}
+
+pub async fn similar(client: &Client, cid: &str, id: &str) -> Result<Vec<Track>> {
+    let mut tp = TRACK_PARAMS.to_vec();
+    tp.extend([("id", id), ("limit", "20")]);
+    Ok(get(client, "tracks/similar", cid, &tp).await?.iter().filter_map(track).collect())
+}
+
+pub async fn by_tag(client: &Client, cid: &str, tag: &str) -> Result<Vec<Track>> {
+    let mut tp = TRACK_PARAMS.to_vec();
+    tp.extend([("tags", tag), ("limit", "20"), ("order", "popularity_month")]);
+    Ok(get(client, "tracks", cid, &tp).await?.iter().filter_map(track).collect())
 }
 
 pub async fn album_detail(client: &Client, cid: &str, id: &str) -> Result<AlbumDetail> {

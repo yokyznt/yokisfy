@@ -41,8 +41,8 @@
       </div>
       <button class="icon-btn like" class:on={ui.liked[t.id]} onclick={() => like(t)} aria-label="Me gusta"><Icon name={ui.liked[t.id] ? 'heartFill' : 'heart'} size={24} /></button>
     </div>
-    <input type="range" class="range big" min="0" max={player.duration || 1} step="0.1" value={pos} style={`--p:${pct}%`} oninput={(e) => (drag = Number(e.currentTarget.value))} onchange={(e) => { const v = Number(e.currentTarget.value); player.position = v; player.at = performance.now(); drag = null; api.seek(v) }} aria-label="Posición" />
-    <div class="fp-times mono"><span>{fmt(pos)}</span><span>{fmt(player.duration)}</span></div>
+    {#if player.track?.live}<span class="live-pill mono"><i></i>EN VIVO · {fmt(pos)}</span>{:else}<input type="range" class="range big" min="0" max={player.duration || 1} step="0.1" value={pos} style={`--p:${pct}%`} oninput={(e) => (drag = Number(e.currentTarget.value))} onchange={(e) => { const v = Number(e.currentTarget.value); player.position = v; player.at = performance.now(); drag = null; api.seek(v) }} aria-label="Posición" />
+    <div class="fp-times mono"><span>{fmt(pos)}</span><span>{fmt(player.duration)}</span></div>{/if}
     <div class="fp-controls">
       <button class="icon-btn" class:active={player.shuffle} onclick={() => { player.shuffle = !player.shuffle; api.shuffle(player.shuffle) }} aria-label="Aleatorio"><Icon name="shuffle" size={22} /></button>
       <button class="icon-btn" onclick={() => api.prev()} aria-label="Anterior"><Icon name="prev" size={30} /></button>

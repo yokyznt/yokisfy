@@ -54,6 +54,7 @@ pub enum Event {
     Status(Status),
     Queue(Vec<Track>, Option<usize>),
     Started(Track),
+    Ended(Track, Vec<String>),
 }
 
 pub type Listener = Arc<dyn Fn(Event) + Send + Sync>;
@@ -104,6 +105,11 @@ pub fn open_media(track: &Track, high: bool) -> Result<Stream, String> {
             let len = f.metadata().ok().map(|m| m.len());
             (Media::File(BufReader::new(f)), hint(p), len)
         }
+        None if track.live => {
+            let r = HttpReader::open_live(&track.stream_url).map_err(|e| e.to_string())?;
+            r.wait_for(48 * 1024, Duration::from_secs(20)).map_err(|e| e.to_string())?;
+            return Stream::open(Media::Http(r), None, "", false);
+        }
         None => {
             let open = |url: &str| -> Result<HttpReader, String> {
                 let r = HttpReader::open(url).map_err(|e| e.to_string())?;
@@ -124,7 +130,7 @@ pub fn open_media(track: &Track, high: bool) -> Result<Stream, String> {
             (Media::Http(r), hint(&url), len)
         }
     };
-    Stream::open(media, len, h)
+    Stream::open(media, len, h, true)
 }
 
 struct Engine {
@@ -246,6 +252,12 @@ impl Player {
                         e.want_play = false;
                         sink.clear();
                         e.loaded = false;
+                        if auto {
+                            if let Some(t) = e.current().and_then(|i| e.queue.get(i)).cloned() {
+                                let ids = e.queue.iter().rev().take(200).map(|t| t.id.clone()).collect();
+                                listener(Event::Ended(t, ids));
+                            }
+                        }
                         return;
                     }
                     load(e, sink);

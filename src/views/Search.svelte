@@ -2,6 +2,7 @@
   import Icon from '../components/Icon.svelte'
   import TrackList from '../components/TrackList.svelte'
   import AlbumGrid from '../components/AlbumGrid.svelte'
+  import Stations from '../components/Stations.svelte'
   import { api } from '../lib/api.js'
   import { ui } from '../lib/state.svelte.js'
 
@@ -43,6 +44,8 @@
 
   let tracks = $derived(results ? results.tracks.filter((t) => filter === 'all' || t.source === filter) : [])
   let albums = $derived(results ? results.albums.filter((a) => filter === 'all' || a.source === filter) : [])
+  let stations = $derived(results && (filter === 'all' || filter === 'radio') ? results.stations || [] : [])
+  let chips = $derived([['all', 'Todo'], ...(ui.settings.jamendo_available ? [['jamendo', 'Jamendo']] : []), ['audius', 'Audius'], ['archive', 'Internet Archive'], ['radio', 'Radio']])
   const genres = ['jazz', 'lo-fi', 'rock', 'electrónica', 'clásica', 'hip hop', 'ambient', 'folk', 'funk', 'reggae', 'blues', 'piano']
 </script>
 
@@ -62,7 +65,7 @@
     </div>
   {:else}
     <div class="chips" role="tablist">
-      {#each [['all', 'Todo'], ['jamendo', 'Jamendo'], ['archive', 'Internet Archive']] as [k, l]}
+      {#each chips as [k, l]}
         <button class="chip" class:on={filter === k} onclick={() => (filter = k)} role="tab" aria-selected={filter === k}>{l}</button>
       {/each}
     </div>
@@ -83,7 +86,13 @@
         <AlbumGrid {albums} />
       </section>
     {/if}
-    {#if !tracks.length && !albums.length && !loading}
+    {#if stations.length}
+      <section class="sec">
+        <h2 class="h2">Radios en vivo</h2>
+        <Stations {stations} limit={filter === 'radio' ? 0 : 6} />
+      </section>
+    {/if}
+    {#if !tracks.length && !albums.length && !stations.length && !loading}
       <p class="empty">Sin resultados para “{ui.searchCache.q}”.</p>
     {/if}
   {/if}

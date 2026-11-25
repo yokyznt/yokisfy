@@ -6,6 +6,8 @@ use std::time::Duration;
 #[derive(Default)]
 struct Inner {
     data: Vec<u8>,
+    base: u64,
+    live: bool,
     total: Option<u64>,
     done: bool,
     error: Option<String>,
@@ -26,7 +28,15 @@ pub const USER_AGENT: &str = concat!("Yokisfy/", env!("CARGO_PKG_VERSION"), " (+
 
 impl HttpReader {
     pub fn open(url: &str) -> io::Result<Self> {
-        let shared = Arc::new(Shared { inner: Mutex::new(Inner::default()), cv: Condvar::new(), cancel: AtomicBool::new(false) });
+        Self::open_with(url, false)
+    }
+
+    pub fn open_live(url: &str) -> io::Result<Self> {
+        Self::open_with(url, true)
+    }
+
+    fn open_with(url: &str, live: bool) -> io::Result<Self> {
+        let shared = Arc::new(Shared { inner: Mutex::new(Inner { live, ..Default::default() }), cv: Condvar::new(), cancel: AtomicBool::new(false) });
         let s = shared.clone();
         let url = url.to_string();
         std::thread::Builder::new().name("yk-http".into()).spawn(move || {
@@ -46,7 +56,7 @@ impl HttpReader {
             };
             {
                 let mut g = s.inner.lock().unwrap();
-                g.total = resp.content_length();
+                g.total = if g.live { None } else { resp.content_length() };
                 if let Some(t) = g.total {
                     g.data.reserve(t as usize);
                 }
@@ -80,7 +90,7 @@ impl HttpReader {
             if let Some(e) = &g.error {
                 return Err(io::Error::other(e.clone()));
             }
-            if g.done || g.data.len() as u64 >= bytes {
+            if g.done || g.base + g.data.len() as u64 >= bytes {
                 return Ok(());
             }
             let now = std::time::Instant::now();
@@ -93,6 +103,9 @@ impl HttpReader {
 
     pub fn len(&self) -> Option<u64> {
         let g = self.shared.inner.lock().unwrap();
+        if g.live {
+            return None;
+        }
         g.total.or(g.done.then_some(g.data.len() as u64))
     }
 
@@ -111,13 +124,21 @@ impl Read for HttpReader {
     fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
         let mut g = self.shared.inner.lock().unwrap();
         loop {
-            let len = g.data.len() as u64;
-            if self.pos < len {
+            if g.live && self.pos > g.base + 4 * 1024 * 1024 {
+                let drop = (self.pos - g.base - 1024 * 1024) as usize;
+                g.data.drain(..drop);
+                g.base += drop as u64;
+            }
+            let len = g.base + g.data.len() as u64;
+            if self.pos < len && self.pos >= g.base {
                 let n = ((len - self.pos) as usize).min(out.len());
-                let start = self.pos as usize;
+                let start = (self.pos - g.base) as usize;
                 out[..n].copy_from_slice(&g.data[start..start + n]);
                 self.pos += n as u64;
                 return Ok(n);
+            }
+            if self.pos < g.base {
+                return Err(io::Error::new(io::ErrorKind::Unsupported, "fuera del búfer en vivo"));
             }
             if g.done {
                 return match &g.error {
@@ -138,6 +159,7 @@ impl Seek for HttpReader {
         let target = match from {
             SeekFrom::Start(n) => n as i64,
             SeekFrom::Current(d) => self.pos as i64 + d,
+            SeekFrom::End(_) if self.shared.inner.lock().unwrap().live => return Err(io::Error::new(io::ErrorKind::Unsupported, "transmisión en vivo")),
             SeekFrom::End(d) => {
                 let total = match self.len() {
                     Some(t) => t,

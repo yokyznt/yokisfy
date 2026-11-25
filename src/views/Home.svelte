@@ -3,6 +3,7 @@
   import Cover from '../components/Cover.svelte'
   import TrackList from '../components/TrackList.svelte'
   import AlbumGrid from '../components/AlbumGrid.svelte'
+  import Stations from '../components/Stations.svelte'
   import { api } from '../lib/api.js'
   import { ui, go } from '../lib/state.svelte.js'
 
@@ -34,7 +35,6 @@
     }
     return out
   })
-  let noJamendo = $derived(!ui.settings.jamendo_client_id)
 </script>
 
 <div class="page">
@@ -53,13 +53,6 @@
     </div>
   {/if}
 
-  {#if noJamendo}
-    <button class="notice" onclick={() => go('settings')}>
-      <Icon name="info" size={18} />
-      <span>Conecta Jamendo para sumar 600 000 canciones libres en FLAC</span>
-      <span class="notice-go">Ajustes</span>
-    </button>
-  {/if}
 
   {#if recent.length}
     <section class="sec">
@@ -78,7 +71,7 @@
   {#each sections as s (s.title)}
     <section class="sec">
       <h2 class="h2">{s.title}</h2>
-      {#if s.tracks.length}<TrackList tracks={s.tracks} limit={8} />{/if}
+      {#if s.tracks.length && s.tracks[0].live}<Stations stations={s.tracks} limit={12} />{:else if s.tracks.length}<TrackList tracks={s.tracks} limit={8} />{/if}
       {#if s.albums.length}<AlbumGrid albums={s.albums} limit={12} />{/if}
     </section>
   {/each}

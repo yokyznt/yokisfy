@@ -108,9 +108,13 @@
       </button>
     </div>
     <div class="pb-seek">
-      <span class="mono time">{fmt(pos)}</span>
-      <input type="range" class="range" min="0" max={player.duration || 1} step="0.1" value={pos} style={`--p:${pct}%`} oninput={seekInput} onchange={seekCommit} disabled={!t} aria-label="Posición" />
-      <span class="mono time">{fmt(player.duration)}</span>
+      {#if t?.live}
+        <span class="live-pill mono"><i></i>EN VIVO · {fmt(pos)}</span>
+      {:else}
+        <span class="mono time">{fmt(pos)}</span>
+        <input type="range" class="range" min="0" max={player.duration || 1} step="0.1" value={pos} style={`--p:${pct}%`} oninput={seekInput} onchange={seekCommit} disabled={!t} aria-label="Posición" />
+        <span class="mono time">{fmt(player.duration)}</span>
+      {/if}
     </div>
   </div>
 

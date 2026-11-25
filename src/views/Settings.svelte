@@ -35,6 +35,7 @@
 
   let hq = $derived((ui.settings.stream_quality || 'alta') !== 'normal')
   let fmt = $derived(ui.settings.download_format || 'ask')
+  let auto = $derived(ui.settings.autoplay !== 'off')
 </script>
 
 <div class="page narrow">
@@ -45,15 +46,24 @@
 
   <section class="set">
     <h2 class="label">Fuentes</h2>
-    <label class="set-row col">
-      <span class="set-name">Client ID de Jamendo</span>
-      <input class="field mono" bind:value={jid} oninput={saveJid} placeholder="a1b2c3d4" spellcheck="false" autocomplete="off" />
-      <button class="link" type="button" onclick={() => openUrl('https://devportal.jamendo.com/')}>Créalo gratis en devportal.jamendo.com</button>
-    </label>
+    {#each [['Audius', true], ['Internet Archive', true], ['Radios del mundo', true], ...(ui.settings.jamendo_available ? [['Jamendo', true]] : [])] as [n, on]}
+      <div class="set-row">
+        <span class="set-name">{n}</span>
+        <span class="pill" class:ok={on}>{on ? 'Activa' : 'No disponible'}</span>
+      </div>
+    {/each}
     <div class="set-row">
-      <span class="set-name">Internet Archive</span>
-      <span class="pill ok">Activo</span>
+      <span class="set-name">Radio automática al terminar la cola</span>
+      <button class="switch" role="switch" aria-checked={auto} aria-label="Radio automática" onclick={() => save('autoplay', auto ? 'off' : 'on')}><i></i></button>
     </div>
+    <details class="adv">
+      <summary>Avanzado</summary>
+      <label class="set-row col">
+        <span class="set-name">Client ID propio de Jamendo (opcional)</span>
+        <input class="field mono" bind:value={jid} oninput={saveJid} placeholder="Vacío = el de Yokisfy" spellcheck="false" autocomplete="off" />
+        <button class="link" type="button" onclick={() => openUrl('https://devportal.jamendo.com/')}>devportal.jamendo.com</button>
+      </label>
+    </details>
   </section>
 
   <section class="set">
