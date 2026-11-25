@@ -45,6 +45,10 @@ export const api = {
   downloads: () => call('downloads'),
   download: (track, kind = null) => call('download', { track: plain(track), kind }),
   deleteDownload: (id) => call('delete_download', { id }),
+  importSpotify: (link) => call('import_spotify', { link }),
+  extProgress: (pos, dur) => invoke('ext_progress', { pos, dur }).catch(() => {}),
+  extEnded: () => invoke('ext_ended').catch(() => {}),
+  extFailed: (error) => invoke('ext_failed', { error }).catch(() => {}),
   settings: () => call('settings'),
   setSetting: (key, value) => call('set_setting', { key, value: String(value) })
 }
@@ -59,6 +63,9 @@ export async function boot() {
   })
   await listen('queue', (e) => {
     player.queue = e.payload.tracks
+  })
+  await listen('import', (e) => {
+    if (ui.importing) ui.importing = e.payload
   })
   await listen('autoradio', (e) => {
     toast(`Radio automática: música parecida a ${e.payload}`)

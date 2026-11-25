@@ -180,6 +180,30 @@ async fn download(app: AppHandle, core: C<'_>, track: Track, kind: Option<String
 }
 
 #[tauri::command]
+async fn import_spotify(app: AppHandle, core: C<'_>, link: String) -> R<yokisfy_core::ImportResult> {
+    let h = app.clone();
+    core.import_spotify(&link, &move |done, total| {
+        let _ = h.emit("import", json!({ "done": done, "total": total }));
+    })
+    .await
+}
+
+#[tauri::command]
+fn ext_progress(core: C<'_>, pos: f64, dur: f64) {
+    core.player.ext_progress(pos, dur)
+}
+
+#[tauri::command]
+fn ext_ended(core: C<'_>) {
+    core.player.ext_ended()
+}
+
+#[tauri::command]
+fn ext_failed(core: C<'_>, error: String) {
+    core.player.ext_failed(error)
+}
+
+#[tauri::command]
 fn delete_download(core: C<'_>, id: String) -> R<()> {
     core.delete_download(&id)
 }
@@ -283,6 +307,7 @@ pub fn run() {
                         Event::Status(s) => h.emit("player", s),
                         Event::Queue(q, i) => h.emit("queue", json!({ "tracks": q, "index": i })),
                         Event::Started(t) => h.emit("started", t),
+                        Event::ExtSeek(p) => h.emit("ext-seek", p),
                         Event::Ended(t, ids) => {
                             let h2 = h.clone();
                             tauri::async_runtime::spawn(async move {
@@ -358,7 +383,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
-            recent, downloads, download, delete_download, settings, set_setting, server_info, pc_library
+            recent, downloads, download, delete_download, settings, set_setting, server_info, pc_library,
+            import_spotify, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");

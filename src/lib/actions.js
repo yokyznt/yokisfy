@@ -60,6 +60,23 @@ export async function newPlaylist(tracks = []) {
   return id
 }
 
+export async function importSpotify() {
+  const link = await ask('Pega el link de una playlist, álbum o canción de Spotify', '', 'Importar')
+  if (!link?.trim()) return
+  ui.importing = { done: 0, total: 0 }
+  try {
+    const r = await api.importSpotify(link.trim())
+    await refreshPlaylists()
+    go('playlist', r.playlistId)
+    const parts = [`${r.free} gratis para descargar`, `${r.youtube} desde YouTube`]
+    if (r.missing.length) parts.push(`${r.missing.length} sin encontrar`)
+    toast(`«${r.name}»: ${parts.join(', ')}`)
+  } catch {
+  } finally {
+    ui.importing = null
+  }
+}
+
 export function playlistItems(tracks) {
   return [
     { label: 'Nueva playlist', icon: 'plus', action: () => newPlaylist(tracks) },

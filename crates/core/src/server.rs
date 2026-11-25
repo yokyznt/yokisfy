@@ -433,7 +433,7 @@ async fn dispatch(ctx: &Arc<Ctx>, method: &str, q: &HashMap<String, String>, req
         }
         "getStarred" | "getStarred2" => {
             let liked: std::collections::HashSet<String> = ctx.lib.liked().unwrap_or_default().into_iter().map(|t| t.id).collect();
-            let songs: Vec<Value> = idx.songs.iter().filter(|t| liked.contains(&t.id)).map(song_json).collect();
+            let songs: Vec<Value> = idx.songs.iter().filter(|t| liked.contains(&t.id) && t.source != "youtube").map(song_json).collect();
             let key = if method == "getStarred2" { "starred2" } else { "starred" };
             ok(json!({ key: { "song": songs, "album": [], "artist": [] } }))
         }
@@ -444,7 +444,7 @@ async fn dispatch(ctx: &Arc<Ctx>, method: &str, q: &HashMap<String, String>, req
         "getPlaylist" => match id.strip_prefix("pl").and_then(|n| n.parse().ok()).and_then(|n| ctx.lib.playlist(n).ok()) {
             Some(d) => {
                 let tracks = ctx.lib.resolve(d.tracks);
-                let songs: Vec<Value> = tracks.iter().filter(|t| !t.live).map(song_json).collect();
+                let songs: Vec<Value> = tracks.iter().filter(|t| !t.live && t.source != "youtube").map(song_json).collect();
                 ok(json!({ "playlist": { "id": id, "name": d.playlist.name, "songCount": songs.len(), "duration": tracks.iter().map(|t| t.duration).sum::<f64>().round() as u64, "owner": USER, "public": false, "created": "2024-01-01T00:00:00Z", "changed": "2024-01-01T00:00:00Z", "entry": songs } }))
             }
             None => fail(70, "Playlist no encontrada"),

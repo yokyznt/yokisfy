@@ -2,7 +2,7 @@
   import Icon from '../components/Icon.svelte'
   import Cover from '../components/Cover.svelte'
   import { ui, go } from '../lib/state.svelte.js'
-  import { newPlaylist } from '../lib/actions.js'
+  import { newPlaylist, importSpotify } from '../lib/actions.js'
 
   let likedCount = $derived(Object.keys(ui.liked).length)
   let localCount = $derived(Object.keys(ui.local).length)
@@ -11,7 +11,10 @@
 <div class="page">
   <div class="sec-head">
     <h1 class="h1">Tu biblioteca</h1>
-    <button class="btn ghost" onclick={() => newPlaylist()}><Icon name="plus" size={16} /> Nueva playlist</button>
+    <div class="sec-actions">
+      <button class="btn ghost" onclick={() => importSpotify()} disabled={!!ui.importing}><Icon name="download" size={16} /> Importar de Spotify</button>
+      <button class="btn ghost" onclick={() => newPlaylist()}><Icon name="plus" size={16} /> Nueva playlist</button>
+    </div>
   </div>
   <div class="rows">
     <button class="lrow" onclick={() => go('liked')}>

@@ -12,6 +12,7 @@ export const ui = $state({
   settings: {},
   theme: typeof document !== 'undefined' ? document.documentElement.dataset.theme : 'dark',
   homeCache: null,
+  importing: null,
   searchCache: { q: '', results: null }
 })
 
@@ -27,6 +28,7 @@ export const player = $state({
   shuffle: false,
   repeat: 'off',
   error: null,
+  external: false,
   queue: [],
   at: 0
 })
@@ -82,7 +84,7 @@ export function setTheme(t) {
 }
 
 export function fmt(s) {
-  if (!s || !isFinite(s)) return '0:00'
+  if (!s || !isFinite(s) || s < 0) return '0:00'
   s = Math.floor(s)
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
@@ -98,7 +100,7 @@ export function totalTime(tracks) {
 }
 
 export function sourceName(s) {
-  return { jamendo: 'Jamendo', archive: 'Internet Archive', audius: 'Audius', radio: 'Radio', local: 'Local' }[s] || s
+  return { jamendo: 'Jamendo', archive: 'Internet Archive', audius: 'Audius', radio: 'Radio', local: 'Local', youtube: 'YouTube' }[s] || s
 }
 
 export function bestLabel(t) {

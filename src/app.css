@@ -321,6 +321,14 @@ button:disabled {
   gap: 16px;
 }
 
+.sec-actions,
+.side-sec-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .sec-head .h1 {
   margin-bottom: 22px;
 }
@@ -1842,6 +1850,69 @@ button:disabled {
   justify-content: flex-end;
 }
 
+.yt {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--bar) + 12px);
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--shadow);
+}
+
+.yt.on {
+  display: flex;
+}
+
+.yt-label {
+  font-size: 12px;
+  color: var(--tx-2);
+  padding: 0 2px;
+}
+
+.yt iframe {
+  width: 356px;
+  height: 200px;
+  border: 0;
+  border-radius: 8px;
+  background: #000;
+}
+
+.import-card {
+  position: fixed;
+  left: 50%;
+  top: 24px;
+  transform: translateX(-50%);
+  z-index: 65;
+  width: min(380px, calc(100vw - 32px));
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 10px;
+}
+
+.import-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-3);
+  overflow: hidden;
+}
+
+.import-bar span {
+  display: block;
+  height: 100%;
+  background: var(--ac);
+  transition: width 0.3s;
+}
+
 @media (max-width: 1100px) {
   .queue {
     position: fixed;
@@ -1866,6 +1937,15 @@ button:disabled {
 }
 
 @media (max-width: 760px) {
+  .yt {
+    left: 8px;
+    right: 8px;
+    bottom: calc(var(--bar) + 62px + env(safe-area-inset-bottom) + 8px);
+    align-items: center;
+  }
+  .yt iframe {
+    width: min(356px, 100%);
+  }
   :root {
     --bar: 64px;
   }

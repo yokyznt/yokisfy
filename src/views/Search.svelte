@@ -45,7 +45,7 @@
   let tracks = $derived(results ? results.tracks.filter((t) => filter === 'all' || t.source === filter) : [])
   let albums = $derived(results ? results.albums.filter((a) => filter === 'all' || a.source === filter) : [])
   let stations = $derived(results && (filter === 'all' || filter === 'radio') ? results.stations || [] : [])
-  let chips = $derived([['all', 'Todo'], ...(ui.settings.jamendo_available ? [['jamendo', 'Jamendo']] : []), ['audius', 'Audius'], ['archive', 'Internet Archive'], ['radio', 'Radio']])
+  let chips = $derived([['all', 'Todo'], ...(ui.settings.jamendo_available ? [['jamendo', 'Jamendo']] : []), ['audius', 'Audius'], ['archive', 'Internet Archive'], ['youtube', 'YouTube'], ['radio', 'Radio']])
   const genres = ['jazz', 'lo-fi', 'rock', 'electrónica', 'clásica', 'hip hop', 'ambient', 'folk', 'funk', 'reggae', 'blues', 'piano']
 </script>
 

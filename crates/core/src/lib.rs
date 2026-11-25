@@ -14,7 +14,8 @@ use library::Library;
 pub use model::*;
 use player::{Event, Listener, Player};
 use reqwest::Client;
-use sources::{archive, audius, jamendo, radio};
+use sources::{archive, audius, jamendo, radio, spotify, youtube};
+use futures_util::StreamExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -82,7 +83,7 @@ impl Core {
 
     pub async fn search(&self, q: &str) -> SearchResults {
         let jid = self.jamendo_id();
-        let (ia, jm, au, rd) = tokio::join!(
+        let (ia, jm, au, rd, yt) = tokio::join!(
             archive::search(&self.client, q),
             async {
                 match &jid {
@@ -91,7 +92,8 @@ impl Core {
                 }
             },
             audius::search(&self.client, q),
-            radio::search(&self.client, q)
+            radio::search(&self.client, q),
+            youtube::search(&self.client, q)
         );
         let mut out = SearchResults::default();
         let mut album_lists = Vec::new();
@@ -119,6 +121,10 @@ impl Core {
             Err(e) => out.warnings.push(format!("Internet Archive: {e}")),
         }
         out.tracks = interleave(track_lists);
+        match yt {
+            Ok(t) => out.tracks.extend(t),
+            Err(e) => out.warnings.push(format!("YouTube: {e}")),
+        }
         out.albums = interleave(album_lists);
         out.stations = rd.unwrap_or_default();
         out.tracks = self.lib.resolve(out.tracks);
@@ -264,6 +270,40 @@ impl Core {
         self.lib.resolve(out)
     }
 
+    pub async fn import_spotify(&self, link: &str, on: &(dyn Fn(usize, usize) + Send + Sync)) -> Result<ImportResult> {
+        let list = spotify::import(&self.client, link).await?;
+        let total = list.tracks.len();
+        let done = std::sync::atomic::AtomicUsize::new(0);
+        on(0, total);
+        let found: Vec<Option<Track>> = futures_util::stream::iter(list.tracks.iter().cloned())
+            .map(|w| {
+                let client = self.client.clone();
+                async move { match_one(&client, &w).await }
+            })
+            .buffered(4)
+            .inspect(|_| on(done.fetch_add(1, Ordering::Relaxed) + 1, total))
+            .collect()
+            .await;
+        let mut res = ImportResult { name: list.name.clone(), total, ..Default::default() };
+        let mut tracks = Vec::new();
+        for (w, t) in list.tracks.iter().zip(found) {
+            match t {
+                Some(mut t) => {
+                    if t.cover.is_none() {
+                        t.cover = list.cover.clone();
+                    }
+                    if t.source == "youtube" { res.youtube += 1 } else { res.free += 1 }
+                    tracks.push(t);
+                }
+                None => res.missing.push(format!("{} — {}", w.title, w.artists)),
+            }
+        }
+        let id = self.lib.create_playlist(&list.name)?;
+        self.lib.add_to_playlist(id, &tracks)?;
+        res.playlist_id = id;
+        Ok(res)
+    }
+
     pub async fn download(&self, track: Track, kind: Option<String>, on: &(dyn Fn(download::Progress) + Send + Sync)) -> Result<Track> {
         if !track.downloadable {
             return Err(Error::Msg("El artista solo permite escuchar esta canción en streaming".into()));
@@ -293,6 +333,48 @@ impl Core {
     pub fn play(&self, tracks: Vec<Track>, start: usize) {
         self.player.play(self.lib.resolve(tracks), start)
     }
+}
+
+#[derive(serde::Serialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResult {
+    pub playlist_id: i64,
+    pub name: String,
+    pub total: usize,
+    pub free: usize,
+    pub youtube: usize,
+    pub missing: Vec<String>,
+}
+
+async fn match_one(client: &Client, w: &spotify::Wanted) -> Option<Track> {
+    let artists: Vec<String> = w.artists.split(", ").map(String::from).filter(|a| !a.is_empty()).collect();
+    let want = youtube::core_title(&w.title);
+    let q = format!("{} {}", w.artist, want);
+    let au = audius::search(client, &q).await.map(|r| r.tracks).unwrap_or_default();
+    let a0 = youtube::norm(&w.artist);
+    let full = youtube::norm(&w.title);
+    let mut legal: Vec<Track> = au
+        .into_iter()
+        .filter(|t| {
+            let ta = youtube::norm(&t.artist);
+            youtube::overlap(&want, &youtube::norm(&t.title)) >= 0.8
+                && youtube::overlap(&youtube::core_title(&t.title), &full) >= 0.6
+                && !a0.is_empty()
+                && (ta.contains(&a0) || (!ta.is_empty() && a0.contains(&ta)))
+                && (w.duration <= 0.0 || t.duration <= 0.0 || (t.duration - w.duration).abs() <= 8.0)
+        })
+        .collect();
+    legal.sort_by_key(|t| !t.downloadable);
+    if let Some(t) = legal.into_iter().next() {
+        return Some(t);
+    }
+    for _ in 0..2 {
+        match youtube::find(client, &w.title, &artists, w.duration, None).await {
+            Ok(t) => return t,
+            Err(_) => tokio::time::sleep(std::time::Duration::from_millis(700)).await,
+        }
+    }
+    None
 }
 
 fn interleave<T>(lists: Vec<Vec<T>>) -> Vec<T> {

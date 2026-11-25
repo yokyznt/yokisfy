@@ -6,6 +6,7 @@
   import FullPlayer from './components/FullPlayer.svelte'
   import Menu from './components/Menu.svelte'
   import Overlays from './components/Overlays.svelte'
+  import YtPlayer from './components/YtPlayer.svelte'
   import Home from './views/Home.svelte'
   import Search from './views/Search.svelte'
   import Album from './views/Album.svelte'
@@ -16,7 +17,7 @@
   import Pc from './views/Pc.svelte'
   import { boot, api } from './lib/api.js'
   import { ui, player, go, root, back, setTheme } from './lib/state.svelte.js'
-  import { newPlaylist } from './lib/actions.js'
+  import { newPlaylist, importSpotify } from './lib/actions.js'
 
   let ready = $state(false)
   $effect(() => {
@@ -80,7 +81,10 @@
     </nav>
     <div class="side-sec">
       <span class="label">Playlists</span>
-      <button class="icon-btn sm" onclick={() => newPlaylist()} aria-label="Nueva playlist" title="Nueva playlist"><Icon name="plus" size={17} /></button>
+      <span class="side-sec-btns">
+        <button class="icon-btn sm" onclick={() => importSpotify()} disabled={!!ui.importing} aria-label="Importar playlist de Spotify" title="Importar playlist de Spotify"><Icon name="download" size={17} /></button>
+        <button class="icon-btn sm" onclick={() => newPlaylist()} aria-label="Nueva playlist" title="Nueva playlist"><Icon name="plus" size={17} /></button>
+      </span>
     </div>
     <div class="side-lists">
       <button class="side-pl" class:on={ui.view.name === 'liked'} onclick={() => go('liked')}>
@@ -140,3 +144,4 @@
 <FullPlayer />
 <Menu />
 <Overlays />
+<YtPlayer />

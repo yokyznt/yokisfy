@@ -48,6 +48,7 @@ pub struct Status {
     pub shuffle: bool,
     pub repeat: String,
     pub error: Option<String>,
+    pub external: bool,
 }
 
 pub enum Event {
@@ -55,6 +56,7 @@ pub enum Event {
     Queue(Vec<Track>, Option<usize>),
     Started(Track),
     Ended(Track, Vec<String>),
+    ExtSeek(f64),
 }
 
 pub type Listener = Arc<dyn Fn(Event) + Send + Sync>;
@@ -75,6 +77,9 @@ enum Cmd {
     Repeat(String),
     Update(Track),
     Ready(u64, Result<Stream, String>),
+    ExtProgress(f64, f64),
+    ExtEnded,
+    ExtFailed(String),
 }
 
 #[derive(Clone)]
@@ -147,6 +152,8 @@ struct Engine {
     duration: f64,
     error: Option<String>,
     fails: usize,
+    external: bool,
+    ext_pos: f64,
 }
 
 impl Engine {
@@ -208,6 +215,8 @@ impl Player {
                     duration: 0.0,
                     error: None,
                     fails: 0,
+                    external: false,
+                    ext_pos: 0.0,
                 };
                 let status = |e: &Engine, sink: &Sink| -> Status {
                     let idx = e.current();
@@ -217,12 +226,13 @@ impl Player {
                         queue_len: e.queue.len(),
                         playing: e.want_play,
                         loading: e.loading,
-                        position: if e.loaded { sink.get_pos().as_secs_f64() } else { 0.0 },
+                        position: if e.external { e.ext_pos } else if e.loaded { sink.get_pos().as_secs_f64() } else { 0.0 },
                         duration: e.duration,
                         volume: e.volume,
                         shuffle: e.shuffle,
                         repeat: e.repeat.clone(),
                         error: e.error.clone(),
+                        external: e.external,
                     }
                 };
                 let load = |e: &mut Engine, sink: &Sink| {
@@ -237,6 +247,15 @@ impl Player {
                     };
                     let track = e.queue[i].clone();
                     e.duration = track.duration;
+                    e.external = track.source == "youtube" && track.local_path.is_none();
+                    e.ext_pos = 0.0;
+                    if e.external {
+                        e.loading = false;
+                        e.loaded = true;
+                        e.fails = 0;
+                        listener(Event::Started(track));
+                        return;
+                    }
                     e.loading = true;
                     let gen = e.gen;
                     let tx = tx.clone();
@@ -309,7 +328,10 @@ impl Player {
                                     advance(&mut e, &sink, false);
                                 }
                                 Cmd::Prev => {
-                                    if e.loaded && sink.get_pos().as_secs_f64() > 3.0 {
+                                    if e.external && e.ext_pos > 3.0 {
+                                        e.ext_pos = 0.0;
+                                        listener(Event::ExtSeek(0.0));
+                                    } else if !e.external && e.loaded && sink.get_pos().as_secs_f64() > 3.0 {
                                         let _ = sink.try_seek(Duration::ZERO);
                                     } else if e.pos > 0 {
                                         e.pos -= 1;
@@ -320,7 +342,10 @@ impl Player {
                                     }
                                 }
                                 Cmd::Seek(s) => {
-                                    if e.loaded {
+                                    if e.external {
+                                        e.ext_pos = s.max(0.0);
+                                        listener(Event::ExtSeek(e.ext_pos));
+                                    } else if e.loaded {
                                         if let Err(err) = sink.try_seek(Duration::from_secs_f64(s.max(0.0))) {
                                             e.error = Some(format!("no se pudo adelantar: {err}"));
                                         }
@@ -383,6 +408,33 @@ impl Player {
                                         *q = t.clone();
                                     }
                                 }
+                                Cmd::ExtProgress(p, d) => {
+                                    if e.external {
+                                        e.ext_pos = p;
+                                        if d > 0.0 {
+                                            e.duration = d;
+                                        }
+                                    }
+                                    dirty = false;
+                                }
+                                Cmd::ExtEnded => {
+                                    if e.external {
+                                        advance(&mut e, &sink, true);
+                                    }
+                                }
+                                Cmd::ExtFailed(err) => {
+                                    if e.external {
+                                        e.error = Some(err);
+                                        e.fails += 1;
+                                        if e.fails < 3 && e.pos + 1 < e.order.len() {
+                                            let msg = e.error.clone();
+                                            advance(&mut e, &sink, false);
+                                            e.error = msg;
+                                        } else {
+                                            e.want_play = false;
+                                        }
+                                    }
+                                }
                                 Cmd::Ready(gen, res) => {
                                     if gen == e.gen {
                                         e.loading = false;
@@ -419,7 +471,7 @@ impl Player {
                         Err(RecvTimeoutError::Timeout) => {}
                         Err(RecvTimeoutError::Disconnected) => break,
                     }
-                    if e.loaded && !e.loading && e.want_play && sink.empty() {
+                    if e.loaded && !e.loading && !e.external && e.want_play && sink.empty() {
                         advance(&mut e, &sink, true);
                         dirty = true;
                     }
@@ -479,6 +531,15 @@ impl Player {
     }
     pub fn repeat(&self, r: String) {
         self.send(Cmd::Repeat(r))
+    }
+    pub fn ext_progress(&self, pos: f64, dur: f64) {
+        self.send(Cmd::ExtProgress(pos, dur))
+    }
+    pub fn ext_ended(&self) {
+        self.send(Cmd::ExtEnded)
+    }
+    pub fn ext_failed(&self, err: String) {
+        self.send(Cmd::ExtFailed(err))
     }
     pub fn update(&self, t: Track) {
         self.send(Cmd::Update(t))

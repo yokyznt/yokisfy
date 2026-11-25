@@ -32,6 +32,13 @@
   </form>
 {/if}
 
+{#if ui.importing}
+  <div class="import-card" role="status" aria-live="polite">
+    <span>Importando de Spotify{ui.importing.total ? ` · ${ui.importing.done} de ${ui.importing.total}` : '…'}</span>
+    <div class="import-bar"><span style={`width:${ui.importing.total ? (ui.importing.done / ui.importing.total) * 100 : 4}%`}></span></div>
+  </div>
+{/if}
+
 {#if ui.toasts.length}
   <div class="toasts" role="status" aria-live="polite">
     {#each ui.toasts as t (t.id)}<div class="toast">{t.text}</div>{/each}
