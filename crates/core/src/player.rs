@@ -176,6 +176,15 @@ impl Player {
         std::thread::Builder::new()
             .name("yk-audio".into())
             .spawn(move || {
+                #[cfg(target_os = "android")]
+                {
+                    if oboe::DefaultStreamValues::get_frames_per_burst() <= 0 {
+                        oboe::DefaultStreamValues::set_frames_per_burst(192);
+                    }
+                    if oboe::DefaultStreamValues::get_sample_rate() <= 0 {
+                        oboe::DefaultStreamValues::set_sample_rate(48000);
+                    }
+                }
                 let out = OutputStream::try_default();
                 let (_stream, handle) = match out {
                     Ok(o) => o,
