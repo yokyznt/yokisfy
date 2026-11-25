@@ -16,6 +16,7 @@ export const api = {
   album: (id) => call('album', { id }),
   home: () => call('home'),
   stations: (q) => call('stations', { q }),
+  serverInfo: () => call('server_info'),
   startRadio: (track) => call('start_radio', { track: plain(track) }),
   play: (tracks, start = 0) => call('play', { tracks: plain(tracks), start }),
   toggle: () => call('toggle'),

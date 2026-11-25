@@ -17,3 +17,7 @@ lofty = "0.22"
 thiserror = "2"
 urlencoding = "2"
 rand = "0.8"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs"] }
+md-5 = "0.10"

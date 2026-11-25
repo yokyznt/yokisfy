@@ -2118,3 +2118,24 @@ button:disabled {
   padding: 12px 0;
   font-size: 14px;
 }
+
+.set-help {
+  font-size: 13px;
+  color: var(--tx-2);
+  margin: 4px 0 8px;
+  line-height: 1.5;
+}
+.kv {
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bg-3);
+  color: var(--tx);
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kv:hover {
+  background: var(--bg-4);
+}

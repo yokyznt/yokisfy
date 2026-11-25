@@ -6,6 +6,7 @@ pub mod library;
 pub mod model;
 pub mod net;
 pub mod player;
+pub mod server;
 pub mod sources;
 
 use library::Library;

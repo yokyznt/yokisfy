@@ -4,7 +4,7 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder
 use yokisfy_core::download::Progress;
 use yokisfy_core::library::{Playlist, PlaylistDetail};
 use yokisfy_core::player::Event;
-use yokisfy_core::{AlbumDetail, Core, Error, SearchResults, Section, Track};
+use yokisfy_core::{server, AlbumDetail, Core, Error, SearchResults, Section, Track};
 
 type C<'a> = State<'a, Arc<Core>>;
 type R<T> = Result<T, Error>;
@@ -192,10 +192,48 @@ fn settings(core: C<'_>) -> R<serde_json::Value> {
 }
 
 #[tauri::command]
-fn set_setting(core: C<'_>, key: String, value: String) -> R<()> {
+async fn set_setting(core: C<'_>, srv: State<'_, Srv>, key: String, value: String) -> R<()> {
     core.lib.set_setting(&key, &value)?;
     core.apply_settings();
+    if key == "share_library" {
+        apply_server(&core, &srv).await;
+    }
     Ok(())
+}
+
+type Srv = tokio::sync::Mutex<Option<server::ServerHandle>>;
+
+fn server_password(core: &Core) -> String {
+    match core.lib.setting("server_password").filter(|p| p.len() >= 8) {
+        Some(p) => p,
+        None => {
+            use rand::Rng;
+            let p: String = rand::thread_rng().sample_iter(rand::distributions::Alphanumeric).take(10).map(char::from).collect::<String>().to_lowercase();
+            let _ = core.lib.set_setting("server_password", &p);
+            p
+        }
+    }
+}
+
+async fn apply_server(core: &Core, srv: &Srv) {
+    let want = core.lib.setting("share_library").as_deref() == Some("on");
+    let mut g = srv.lock().await;
+    if !want {
+        *g = None;
+        return;
+    }
+    if g.is_none() {
+        *g = server::start(core.lib.clone(), server_password(core)).await.ok();
+    }
+}
+
+#[tauri::command]
+async fn server_info(core: C<'_>, srv: State<'_, Srv>) -> R<serde_json::Value> {
+    let g = srv.lock().await;
+    Ok(match g.as_ref() {
+        Some(h) => json!({ "on": true, "url": format!("http://{}:{}", server::lan_ip().unwrap_or_else(|| "localhost".into()), h.port), "user": server::USER, "password": server_password(&core), "name": server::host_name() }),
+        None => json!({ "on": false }),
+    })
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -231,7 +269,14 @@ pub fn run() {
                     };
                 }),
             )?;
-            app.manage(Arc::new(core));
+            let core = Arc::new(core);
+            app.manage(core.clone());
+            app.manage(Srv::default());
+            let h3 = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let srv = h3.state::<Srv>();
+                apply_server(&core, &srv).await;
+            });
             let mut w = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                 .title("Yokisfy")
                 .inner_size(1280.0, 820.0)
@@ -251,7 +296,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
-            recent, downloads, download, delete_download, settings, set_setting
+            recent, downloads, download, delete_download, settings, set_setting, server_info
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");

@@ -36,6 +36,20 @@
   let hq = $derived((ui.settings.stream_quality || 'alta') !== 'normal')
   let fmt = $derived(ui.settings.download_format || 'ask')
   let auto = $derived(ui.settings.autoplay !== 'off')
+  let share = $derived(ui.settings.share_library === 'on')
+  let srv = $state({ on: false })
+  async function loadSrv() {
+    srv = await api.serverInfo()
+  }
+  loadSrv()
+  async function toggleShare() {
+    await save('share_library', share ? 'off' : 'on')
+    await loadSrv()
+  }
+  function copy(v) {
+    navigator.clipboard.writeText(v)
+    toast('Copiado')
+  }
 </script>
 
 <div class="page narrow">
@@ -64,6 +78,23 @@
         <button class="link" type="button" onclick={() => openUrl('https://devportal.jamendo.com/')}>devportal.jamendo.com</button>
       </label>
     </details>
+  </section>
+
+  <section class="set">
+    <h2 class="label">Escuchar en el celular</h2>
+    <div class="set-row">
+      <span class="set-name">Compartir mis descargas y playlists en la red de casa</span>
+      <button class="switch" role="switch" aria-checked={share} aria-label="Compartir biblioteca" onclick={toggleShare}><i></i></button>
+    </div>
+    {#if srv.on}
+      <p class="set-help">Yokisfy en el celular encuentra esta PC solo. Si usas otra app compatible con Subsonic (Symfonium, Tempo, DSub), usa estos datos:</p>
+      {#each [['Servidor', srv.url], ['Usuario', srv.user], ['Contraseña', srv.password]] as [k, v]}
+        <div class="set-row">
+          <span class="set-name">{k}</span>
+          <button class="kv mono" onclick={() => copy(v)} title="Copiar">{v}</button>
+        </div>
+      {/each}
+    {/if}
   </section>
 
   <section class="set">
