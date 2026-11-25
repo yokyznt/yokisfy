@@ -24,6 +24,11 @@
       <span class="lrow-text"><span class="lrow-name">Descargas</span><span class="lrow-meta">{localCount} canciones sin conexión</span></span>
       <Icon name="back" size={16} />
     </button>
+    <button class="lrow" onclick={() => go('pc')}>
+      <span class="lrow-art"><Icon name="disc" size={22} /></span>
+      <span class="lrow-text"><span class="lrow-name">En mi PC</span><span class="lrow-meta">Lo que descargaste en tu computadora, por Wi-Fi</span></span>
+      <Icon name="back" size={16} />
+    </button>
     <button class="lrow" onclick={() => go('recent')}>
       <span class="lrow-art"><Icon name="radio" size={22} /></span>
       <span class="lrow-text"><span class="lrow-name">Escuchado recientemente</span><span class="lrow-meta">Historial</span></span>

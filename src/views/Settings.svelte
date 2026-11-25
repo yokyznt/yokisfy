@@ -80,6 +80,7 @@
     </details>
   </section>
 
+  {#if !ui.settings.mobile}
   <section class="set">
     <h2 class="label">Escuchar en el celular</h2>
     <div class="set-row">
@@ -97,6 +98,8 @@
     {/if}
   </section>
 
+  {/if}
+
   <section class="set">
     <h2 class="label">Calidad</h2>
     <div class="set-row">
@@ -111,6 +114,7 @@
         {/each}
       </div>
     </div>
+    {#if !ui.settings.mobile}
     <div class="set-row col">
       <span class="set-name">Carpeta de descargas</span>
       <div class="dir">
@@ -118,6 +122,12 @@
         <button class="btn ghost" onclick={pickDir}><Icon name="folder" size={16} /> Cambiar</button>
       </div>
     </div>
+    {:else}
+    <div class="set-row col">
+      <span class="set-name">Carpeta de descargas</span>
+      <span class="mono set-help">{ui.settings.download_dir_effective}</span>
+    </div>
+    {/if}
   </section>
 
   <section class="set">

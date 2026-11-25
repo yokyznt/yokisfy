@@ -5,6 +5,7 @@ pub mod download;
 pub mod library;
 pub mod model;
 pub mod net;
+pub mod pc;
 pub mod player;
 pub mod server;
 pub mod sources;
@@ -191,6 +192,27 @@ impl Core {
             s.push(sec("Conciertos en vivo", a, vec![]));
         }
         s
+    }
+
+    pub async fn pc_library(&self) -> Result<(pc::PcServer, Vec<Track>)> {
+        let saved: Option<pc::PcServer> = self.lib.setting("pc_server").and_then(|s| serde_json::from_str(&s).ok());
+        if let Some(s) = &saved {
+            if let Ok(t) = pc::library(&self.client, s).await {
+                return Ok((s.clone(), self.lib.resolve(t)));
+            }
+        }
+        let found = tokio::task::spawn_blocking(|| pc::discover(std::time::Duration::from_millis(1800))).await.unwrap_or_default();
+        let mut last = Error::Msg("No encontré tu PC. Abre Yokisfy en la PC, activa «Compartir» en Ajustes y conecta el celular al mismo Wi-Fi.".into());
+        for s in found {
+            match pc::library(&self.client, &s).await {
+                Ok(t) => {
+                    let _ = self.lib.set_setting("pc_server", &serde_json::to_string(&s)?);
+                    return Ok((s, self.lib.resolve(t)));
+                }
+                Err(e) => last = e,
+            }
+        }
+        Err(last)
     }
 
     pub async fn radio_for(&self, seed: &Track, exclude: &[String]) -> Vec<Track> {

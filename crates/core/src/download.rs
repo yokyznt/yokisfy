@@ -63,6 +63,8 @@ fn write_tags(path: &Path, t: &Track, cover: Option<Vec<u8>>) -> std::result::Re
     }
     let source = match t.source.as_str() {
         "jamendo" => "Jamendo",
+        "audius" => "Audius",
+        "pc" => "tu PC",
         "archive" => "Internet Archive",
         o => o,
     };

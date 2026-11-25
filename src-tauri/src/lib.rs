@@ -4,6 +4,7 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder
 use yokisfy_core::download::Progress;
 use yokisfy_core::library::{Playlist, PlaylistDetail};
 use yokisfy_core::player::Event;
+use tauri_plugin_yk_media::MediaState;
 use yokisfy_core::{server, AlbumDetail, Core, Error, SearchResults, Section, Track};
 
 type C<'a> = State<'a, Arc<Core>>;
@@ -188,6 +189,7 @@ fn settings(core: C<'_>) -> R<serde_json::Value> {
     let mut m = core.lib.settings()?;
     m.insert("download_dir_effective".into(), json!(core.download_dir().to_string_lossy()));
     m.insert("jamendo_available".into(), json!(core.has_jamendo()));
+    m.insert("mobile".into(), json!(cfg!(mobile)));
     Ok(serde_json::Value::Object(m))
 }
 
@@ -228,6 +230,12 @@ async fn apply_server(core: &Core, srv: &Srv) {
 }
 
 #[tauri::command]
+async fn pc_library(core: C<'_>) -> R<serde_json::Value> {
+    let (s, tracks) = core.pc_library().await?;
+    Ok(json!({ "name": s.name, "tracks": tracks }))
+}
+
+#[tauri::command]
 async fn server_info(core: C<'_>, srv: State<'_, Srv>) -> R<serde_json::Value> {
     let g = srv.lock().await;
     Ok(match g.as_ref() {
@@ -236,17 +244,41 @@ async fn server_info(core: C<'_>, srv: State<'_, Srv>) -> R<serde_json::Value> {
     })
 }
 
+static LAST_MEDIA: std::sync::Mutex<Option<(MediaState, std::time::Instant)>> = std::sync::Mutex::new(None);
+
+fn push_media(h: &AppHandle, s: &yokisfy_core::player::Status) {
+    use tauri_plugin_yk_media::MediaExt;
+    let st = match &s.track {
+        Some(t) => MediaState { title: t.title.clone(), artist: t.artist.clone(), cover: t.cover.clone(), playing: s.playing, position: s.position, duration: if t.live { 0.0 } else { s.duration }, active: true },
+        None => MediaState::default(),
+    };
+    {
+        let mut g = LAST_MEDIA.lock().unwrap();
+        let same = g.as_ref().map(|(p, at)| p.title == st.title && p.playing == st.playing && p.active == st.active && (p.position - st.position).abs() < 3.0 + at.elapsed().as_secs_f64()).unwrap_or(false);
+        if same {
+            return;
+        }
+        *g = Some((st.clone(), std::time::Instant::now()));
+    }
+    let h2 = h.clone();
+    std::thread::spawn(move || h2.media().update(&st));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_yk_media::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let h = app.handle().clone();
             let core = Core::new(
                 &dir,
                 Arc::new(move |e| {
+                    if let Event::Status(s) = &e {
+                        push_media(&h, s);
+                    }
                     let _ = match e {
                         Event::Status(s) => h.emit("player", s),
                         Event::Queue(q, i) => h.emit("queue", json!({ "tracks": q, "index": i })),
@@ -270,6 +302,31 @@ pub fn run() {
                 }),
             )?;
             let core = Arc::new(core);
+            #[cfg(mobile)]
+            if core.lib.setting("download_dir").map(|d| d.trim().is_empty()).unwrap_or(true) {
+                let public = std::path::PathBuf::from("/storage/emulated/0/Music/Yokisfy");
+                let dir = if std::fs::create_dir_all(&public).is_ok() && std::fs::write(public.join(".yk"), b"").is_ok() {
+                    let _ = std::fs::remove_file(public.join(".yk"));
+                    public
+                } else {
+                    dir.join("Music")
+                };
+                let _ = core.lib.set_setting("download_dir", &dir.to_string_lossy());
+            }
+            {
+                use tauri_plugin_yk_media::MediaExt;
+                let c2 = core.clone();
+                app.media().listen(move |v| {
+                    match v["action"].as_str().unwrap_or("") {
+                        "play" => c2.player.set_playing(true),
+                        "pause" => c2.player.set_playing(false),
+                        "next" => c2.player.next(),
+                        "prev" => c2.player.prev(),
+                        "seek" => c2.player.seek(v["position"].as_f64().unwrap_or(0.0)),
+                        _ => {}
+                    }
+                });
+            }
             app.manage(core.clone());
             app.manage(Srv::default());
             let h3 = app.handle().clone();
@@ -277,26 +334,31 @@ pub fn run() {
                 let srv = h3.state::<Srv>();
                 apply_server(&core, &srv).await;
             });
-            let mut w = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
-                .title("Yokisfy")
-                .inner_size(1280.0, 820.0)
-                .min_inner_size(360.0, 600.0);
-            if let Ok(pos) = std::env::var("YOKISFY_DEV_POS") {
-                let p: Vec<f64> = pos.split(',').filter_map(|x| x.trim().parse().ok()).collect();
-                if p.len() >= 2 {
-                    w = w.position(p[0], p[1]).focused(false);
+            #[cfg(desktop)]
+            {
+                let mut w = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
+                    .title("Yokisfy")
+                    .inner_size(1280.0, 820.0)
+                    .min_inner_size(360.0, 600.0);
+                if let Ok(pos) = std::env::var("YOKISFY_DEV_POS") {
+                    let p: Vec<f64> = pos.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+                    if p.len() >= 2 {
+                        w = w.position(p[0], p[1]).focused(false);
+                    }
+                    if p.len() >= 4 {
+                        w = w.inner_size(p[2], p[3]);
+                    }
                 }
-                if p.len() >= 4 {
-                    w = w.inner_size(p[2], p[3]);
-                }
+                w.build()?;
             }
-            w.build()?;
+            #[cfg(mobile)]
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::default()).build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
-            recent, downloads, download, delete_download, settings, set_setting, server_info
+            recent, downloads, download, delete_download, settings, set_setting, server_info, pc_library
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");

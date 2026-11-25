@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "src-tauri"]
+members = ["crates/core", "src-tauri", "src-tauri/plugins/yk-media"]
 resolver = "2"
 
 [profile.release]

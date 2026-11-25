@@ -13,6 +13,7 @@
   import Library from './views/Library.svelte'
   import Downloads from './views/Downloads.svelte'
   import Settings from './views/Settings.svelte'
+  import Pc from './views/Pc.svelte'
   import { boot, api } from './lib/api.js'
   import { ui, player, go, root, back, setTheme } from './lib/state.svelte.js'
   import { newPlaylist } from './lib/actions.js'
@@ -116,6 +117,7 @@
           {:else if ui.view.name === 'playlist'}<Collection kind="playlist" id={ui.view.param} />
           {:else if ui.view.name === 'downloads'}<Downloads />
           {:else if ui.view.name === 'settings'}<Settings />
+          {:else if ui.view.name === 'pc'}<Pc />
           {/if}
         </div>
       {/key}
