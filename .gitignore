@@ -1,0 +1,8 @@
+node_modules/
+dist/
+target/
+src-tauri/gen/
+src-tauri/target/
+.env
+*.log
+.impeccable/hook.cache.json
