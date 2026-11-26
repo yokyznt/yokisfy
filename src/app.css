@@ -2603,7 +2603,7 @@ button:disabled {
   z-index: 200;
   display: flex;
   justify-content: flex-end;
-  padding: 8px 10px;
+  padding: 0;
   transition: opacity 0.4s var(--ease), transform 0.4s var(--ease);
 }
 
@@ -2615,23 +2615,21 @@ button:disabled {
 
 .wc {
   display: flex;
-  gap: 6px;
-  padding: 4px;
-  border-radius: 999px;
   background: color-mix(in oklab, var(--bg) 55%, transparent);
   backdrop-filter: blur(14px) saturate(1.4);
-  border: 1px solid color-mix(in oklab, var(--tx) 8%, transparent);
+  border-left: 1px solid color-mix(in oklab, var(--tx) 8%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--tx) 8%, transparent);
 }
 
 .wc-b {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  width: 46px;
+  height: 32px;
+  border-radius: 0;
   display: grid;
   place-items: center;
   color: var(--tx);
   opacity: 0.75;
-  transition: background 0.18s, opacity 0.18s, transform 0.18s, color 0.18s;
+  transition: background 0.12s, opacity 0.12s, color 0.12s;
 }
 
 .wc-b svg {
@@ -2650,12 +2648,16 @@ button:disabled {
 }
 
 .wc-b:active {
-  transform: scale(0.9);
+  background: color-mix(in oklab, var(--tx) 18%, transparent);
 }
 
 .wc-b.close:hover {
-  background: #e5484d;
+  background: #c42b1c;
   color: #fff;
+}
+
+.wc-b.close:active {
+  background: #b3271a;
 }
 
 .fp .fp-head {
@@ -2825,7 +2827,7 @@ button:disabled {
 
 .wc-sep {
   width: 1px;
-  margin: 6px 2px;
+  margin: 8px 0;
   background: color-mix(in oklab, var(--tx) 14%, transparent);
 }
 
