@@ -62,6 +62,8 @@ export const api = {
   partyHosts: () => call('party_hosts'),
   partyCall: (url, action, body = null) => call('party_call', { url, action, body }),
   openMini: () => call('open_mini'),
+  audioOutputs: () => call('audio_outputs'),
+  setAudioOutput: (id, name) => call('set_audio_output', { id, name }),
   newWindow: () => call('new_window'),
   extProgress: (pos, dur) => invoke('ext_progress', { pos, dur }).catch(() => {}),
   extEnded: () => invoke('ext_ended').catch(() => {}),

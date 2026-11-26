@@ -22,7 +22,7 @@
   import Equalizer from './components/Equalizer.svelte'
   import MiniPlayer from './components/MiniPlayer.svelte'
   import { boot, api } from './lib/api.js'
-  import { ui, player, go, root, back, setTheme } from './lib/state.svelte.js'
+  import { ui, player, go, root, back, setTheme, isLight } from './lib/state.svelte.js'
   import { newPlaylist, importSpotify } from './lib/actions.js'
 
   let ready = $state(false)
@@ -112,8 +112,8 @@
     </div>
     <div class="side-foot">
       <button class="side-link" class:on={ui.view.name === 'settings'} onclick={() => root('settings')}><Icon name="settings" size={20} /><span>Ajustes</span></button>
-      <button class="icon-btn sm" onclick={() => setTheme(ui.theme === 'dark' ? 'light' : 'dark')} aria-label={ui.theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'} title={ui.theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}>
-        <Icon name={ui.theme === 'dark' ? 'sun' : 'moon'} size={18} />
+      <button class="icon-btn sm" onclick={() => setTheme(isLight(ui.theme) ? 'dark' : 'light')} aria-label={isLight(ui.theme) ? 'Cambiar a tema oscuro' : 'Cambiar a tema claro'} title={isLight(ui.theme) ? 'Cambiar a tema oscuro' : 'Cambiar a tema claro'}>
+        <Icon name={isLight(ui.theme) ? 'moon' : 'sun'} size={18} />
       </button>
     </div>
   </aside>

@@ -80,6 +80,7 @@ enum Cmd {
     ExtProgress(f64, f64),
     ExtEnded,
     ExtFailed(String),
+    Device(Option<String>),
 }
 
 #[derive(Clone)]
@@ -165,6 +166,7 @@ struct Engine {
     ext_at: Option<std::time::Instant>,
     pending_xf: f64,
     fade_in: Option<(Instant, f64)>,
+    pending_seek: Option<f64>,
 }
 
 impl Engine {
@@ -204,7 +206,10 @@ impl Player {
                         oboe::DefaultStreamValues::set_sample_rate(48000);
                     }
                 }
-                let out = OutputStream::try_default();
+                let mut device: Option<String> = None;
+                let mut carry: Option<(Engine, f64)> = None;
+                'dev: loop {
+                let out = open_output(device.as_deref());
                 let (_stream, handle) = match out {
                     Ok(o) => o,
                     Err(e) => {
@@ -213,7 +218,11 @@ impl Player {
                     }
                 };
                 let mut sink = Sink::try_new(&handle).expect("sink");
-                let mut e = Engine {
+                let resume = carry.take();
+                let resume_pos = resume.as_ref().map(|(_, p)| *p);
+                let mut e = match resume {
+                    Some((e, _)) => e,
+                    None => Engine {
                     queue: vec![],
                     order: vec![],
                     pos: 0,
@@ -232,6 +241,8 @@ impl Player {
                     ext_at: None,
                     pending_xf: 0.0,
                     fade_in: None,
+                    pending_seek: None,
+                    },
                 };
                 let mut fading: Vec<Fade> = Vec::new();
                 let xf_secs = || xfade.load(Ordering::Relaxed) as f64 / 1000.0;
@@ -269,6 +280,7 @@ impl Player {
                     }
                     e.pending_xf = if swapped { xf } else { 0.0 };
                     e.fade_in = None;
+                    e.pending_seek = None;
                     e.loaded = false;
                     e.error = None;
                     let Some(i) = e.current() else {
@@ -322,6 +334,12 @@ impl Player {
                     }
                     load(e, sink, fading, xf);
                 };
+                if let Some(pos) = resume_pos {
+                    if !e.external && (e.loaded || e.loading) {
+                        load(&mut e, &mut sink, &mut fading, 0.0);
+                        e.pending_seek = Some(pos);
+                    }
+                }
                 let mut last_emit = Instant::now();
                 loop {
                     let mut dirty = false;
@@ -497,6 +515,18 @@ impl Player {
                                         }
                                     }
                                 }
+                                Cmd::Device(name) => {
+                                    if name != device {
+                                        let pos = if e.loaded && !e.external { sink.get_pos().as_secs_f64() } else { 0.0 };
+                                        for f in fading.drain(..) {
+                                            f.sink.stop();
+                                        }
+                                        sink.stop();
+                                        device = name;
+                                        carry = Some((e, pos));
+                                        continue 'dev;
+                                    }
+                                }
                                 Cmd::Ready(gen, res) => {
                                     if gen == e.gen {
                                         e.loading = false;
@@ -513,6 +543,9 @@ impl Player {
                                                 }
                                                 e.pending_xf = 0.0;
                                                 sink.append(dec);
+                                                if let Some(s) = e.pending_seek.take().filter(|s| *s > 1.0) {
+                                                    let _ = sink.try_seek(Duration::from_secs_f64(s));
+                                                }
                                                 if e.want_play { sink.play() } else { sink.pause() }
                                                 e.loaded = true;
                                                 e.fails = 0;
@@ -537,7 +570,7 @@ impl Player {
                             }
                         }
                         Err(RecvTimeoutError::Timeout) => {}
-                        Err(RecvTimeoutError::Disconnected) => break,
+                        Err(RecvTimeoutError::Disconnected) => return,
                     }
                     if e.loaded && !e.loading && !e.external && e.want_play && sink.empty() {
                         advance(&mut e, &mut sink, &mut fading, true, 0.0);
@@ -581,9 +614,14 @@ impl Player {
                         last_emit = Instant::now();
                     }
                 }
+                }
             })
             .expect("hilo de audio");
         me
+    }
+
+    pub fn set_device(&self, name: Option<String>) {
+        self.send(Cmd::Device(name))
     }
 
     fn send(&self, c: Cmd) {
@@ -641,4 +679,23 @@ impl Player {
     pub fn update(&self, t: Track) {
         self.send(Cmd::Update(t))
     }
+}
+
+fn open_output(name: Option<&str>) -> std::result::Result<(OutputStream, rodio::OutputStreamHandle), String> {
+    use rodio::cpal::traits::{DeviceTrait, HostTrait};
+    if let Some(n) = name {
+        if let Ok(mut devs) = rodio::cpal::default_host().output_devices() {
+            if let Some(d) = devs.find(|d| d.name().map(|x| x == n).unwrap_or(false)) {
+                if let Ok(o) = OutputStream::try_from_device(&d) {
+                    return Ok(o);
+                }
+            }
+        }
+    }
+    OutputStream::try_default().map_err(|e| e.to_string())
+}
+
+pub fn output_devices() -> Vec<String> {
+    use rodio::cpal::traits::{DeviceTrait, HostTrait};
+    rodio::cpal::default_host().output_devices().map(|d| d.filter_map(|x| x.name().ok()).collect()).unwrap_or_default()
 }

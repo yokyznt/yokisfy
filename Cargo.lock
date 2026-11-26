@@ -6620,6 +6620,8 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-plugin-yk-media",
  "tokio",
+ "windows 0.62.2",
+ "windows-core 0.62.2",
  "yokisfy-core",
 ]
 

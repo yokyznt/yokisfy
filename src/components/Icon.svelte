@@ -41,6 +41,7 @@
     remote: 'M8 2.5h8a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2zM12 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM10 16h.01M14 16h.01M12 18.5h.01',
     mini: 'M3 5h18v14H3zM12.5 12.5h6v4.5h-6z',
     sync: 'M4 12a8 8 0 0 1 14-5.3L20 8M20 4v4h-4M20 12a8 8 0 0 1-14 5.3L4 16M4 20v-4h4',
+    output: 'M4 5h16v10H4zM9 19h6M12 15v4',
     keyboard: 'M3 6h18v12H3zM7 10h.01M11 10h.01M15 10h.01M7 14h10'
   }
   const filled = { play: 1, pause: 1, heartFill: 1 }

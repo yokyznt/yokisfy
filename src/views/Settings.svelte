@@ -1,9 +1,10 @@
 <script>
+  import { outputMenu } from '../lib/actions.js'
   import { getVersion } from '@tauri-apps/api/app'
   import { checkUpdate } from '../lib/update.js'
   import Icon from '../components/Icon.svelte'
   import { api } from '../lib/api.js'
-  import { ui, setTheme, toast } from '../lib/state.svelte.js'
+  import { ui, setTheme, toast, THEMES } from '../lib/state.svelte.js'
   import { open } from '@tauri-apps/plugin-dialog'
   import { openUrl } from '@tauri-apps/plugin-opener'
 
@@ -95,6 +96,14 @@
 
   {#if !ui.settings.mobile}
   <section class="set">
+    <h2 class="label">Salida de audio</h2>
+    <div class="set-row">
+      <span class="set-name">Dónde suena la música: audífonos, tele, bocinas</span>
+      <button class="btn ghost" onclick={outputMenu}><Icon name="output" size={16} /> Elegir</button>
+    </div>
+  </section>
+
+  <section class="set">
     <h2 class="label">Atajos de teclado</h2>
     <div class="set-row">
       <span class="set-name">Controlar la música desde cualquier programa o juego</span>
@@ -160,9 +169,13 @@
 
   <section class="set">
     <h2 class="label">Apariencia</h2>
-    <div class="set-row">
-      <span class="set-name">Tema oscuro</span>
-      <button class="switch" role="switch" aria-checked={ui.theme === 'dark'} aria-label="Tema oscuro" onclick={() => setTheme(ui.theme === 'dark' ? 'light' : 'dark')}><i></i></button>
+    <div class="themes" role="radiogroup" aria-label="Tema">
+      {#each THEMES as [id, name, bg, tx, ac]}
+        <button class="theme-card" class:on={ui.theme === id} role="radio" aria-checked={ui.theme === id} onclick={() => setTheme(id)}>
+          <span class="theme-sw" style={`background:${bg}`}><i style={`background:${tx}`}></i><i style={`background:${ac}`}></i></span>
+          <span>{name}</span>
+        </button>
+      {/each}
     </div>
   </section>
 

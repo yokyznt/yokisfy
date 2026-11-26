@@ -85,6 +85,22 @@ export function openMenu(event, items) {
   ui.menu = { x, y, items, stack: [] }
 }
 
+export const THEMES = [
+  ['dark', 'Negro', '#09090a', '#f4f4f3', '#f4f4f3'],
+  ['light', 'Blanco', '#fafaf8', '#0b0b0c', '#0b0b0c'],
+  ['amoled', 'Negro puro', '#000000', '#ffffff', '#ffffff'],
+  ['graphite', 'Grafito', '#1c1c1e', '#ececec', '#d6d6d6'],
+  ['paper', 'Papel', '#efe9dd', '#1d1a14', '#1d1a14'],
+  ['lime', 'Lima', '#09090a', '#f4f4f3', '#d4ff3a'],
+  ['crimson', 'Carmesí', '#0d0809', '#f4f4f3', '#ff3b4f'],
+  ['ocean', 'Océano', '#070b12', '#f4f4f3', '#3ba7ff'],
+  ['violet', 'Violeta', '#0b0812', '#f4f4f3', '#a374ff'],
+  ['sunset', 'Atardecer', '#0f0a06', '#f4f4f3', '#ff9f2e'],
+  ['sakura', 'Sakura', '#fff5f7', '#2a0d16', '#e8466f']
+]
+
+export const isLight = (t) => ['light', 'paper', 'sakura'].includes(t)
+
 export function setTheme(t) {
   ui.theme = t
   document.documentElement.dataset.theme = t

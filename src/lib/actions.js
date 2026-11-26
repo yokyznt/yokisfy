@@ -167,3 +167,16 @@ export function openLicense(l) {
   if (/^https?:\/\//.test(l)) openUrl(l)
   else toast(l)
 }
+
+export async function outputMenu(e) {
+  const ev = { clientX: e.clientX, clientY: e.clientY, currentTarget: e.currentTarget }
+  const r = await api.audioOutputs()
+  const pick = async (id, name) => {
+    await api.setAudioOutput(id, name)
+    toast(name ? `Sonando en ${name}` : 'Sonando en la salida de Windows')
+  }
+  openMenu(ev, [
+    { label: `${r.current ? '' : '✓ '}Predeterminada de Windows`, icon: 'volume', action: () => pick(null, null) },
+    ...r.list.map((o) => ({ label: `${r.current === o.id ? '✓ ' : ''}${o.name}`, icon: 'volume', action: () => pick(o.id, o.name) }))
+  ])
+}

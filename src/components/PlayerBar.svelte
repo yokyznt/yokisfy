@@ -3,7 +3,7 @@
   import Cover from './Cover.svelte'
   import { api } from '../lib/api.js'
   import { ui, player, fmt, go, sourceName, isLocal } from '../lib/state.svelte.js'
-  import { like, trackMenu } from '../lib/actions.js'
+  import { like, trackMenu, outputMenu } from '../lib/actions.js'
   import { sleepItems } from '../lib/sleep.js'
   import { openMenu } from '../lib/state.svelte.js'
 
@@ -131,6 +131,7 @@
     <button class="icon-btn sm" class:active={ui.eqOpen} onclick={() => (ui.eqOpen = !ui.eqOpen)} aria-label="Ecualizador" title="Ecualizador"><Icon name="eq" size={18} /></button>
     {#if !ui.settings.mobile}<button class="icon-btn sm" onclick={() => api.openMini()} aria-label="Mini reproductor" title="Mini reproductor (siempre encima)"><Icon name="mini" size={18} /></button>{/if}
     <button class="icon-btn sm" class:active={ui.queueOpen} onclick={() => (ui.queueOpen = !ui.queueOpen)} aria-label="Cola" title="Cola"><Icon name="queue" size={18} /></button>
+    {#if !ui.settings.mobile}<button class="icon-btn sm" onclick={outputMenu} aria-label="Salida de audio" title="Salida de audio (audífonos, tele, bocinas)"><Icon name="output" size={18} /></button>{/if}
     <button class="icon-btn sm" onclick={mute} aria-label={vol > 0 ? 'Silenciar' : 'Activar sonido'}><Icon name={vol > 0 ? 'volume' : 'mute'} size={18} /></button>
     <input type="range" class="range vol" min="0" max="1" step="0.01" value={vol} style={`--p:${vol * 100}%`} oninput={volInput} onchange={volCommit} aria-label="Volumen" />
   </div>

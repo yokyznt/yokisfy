@@ -1,3 +1,5 @@
+#[cfg(windows)]
+mod route;
 use serde_json::json;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -224,6 +226,46 @@ async fn new_window(app: AppHandle) {
     open_window(&app);
     #[cfg(mobile)]
     let _ = app;
+}
+
+fn saved_output(core: &Core) -> Option<(String, String)> {
+    let v: serde_json::Value = serde_json::from_str(&core.lib.setting("audio_out")?).ok()?;
+    Some((v["id"].as_str()?.to_string(), v["name"].as_str()?.to_string()))
+}
+
+#[cfg(windows)]
+fn route_youtube(app: &AppHandle) -> usize {
+    let core = app.state::<Arc<Core>>();
+    match saved_output(&core) {
+        Some((id, _)) => route::route(Some(id)),
+        None => 0,
+    }
+}
+
+#[tauri::command]
+async fn audio_outputs(core: C<'_>) -> R<serde_json::Value> {
+    let cur = saved_output(&core).map(|o| o.0);
+    #[cfg(windows)]
+    let list: Vec<serde_json::Value> = tauri::async_runtime::spawn_blocking(route::outputs).await.unwrap_or_default().into_iter().map(|o| json!({ "id": o.id, "name": o.name, "default": o.default })).collect();
+    #[cfg(not(windows))]
+    let list: Vec<serde_json::Value> = yokisfy_core::player::output_devices().into_iter().map(|n| json!({ "id": n, "name": n, "default": false })).collect();
+    Ok(json!({ "current": cur, "list": list }))
+}
+
+#[tauri::command]
+async fn set_audio_output(core: C<'_>, id: Option<String>, name: Option<String>) -> R<usize> {
+    match (&id, &name) {
+        (Some(i), Some(n)) => core.lib.set_setting("audio_out", &json!({ "id": i, "name": n }).to_string())?,
+        _ => core.lib.set_setting("audio_out", "")?,
+    }
+    core.player.set_device(name.clone());
+    #[cfg(windows)]
+    {
+        let n = tauri::async_runtime::spawn_blocking(move || route::route(id)).await.unwrap_or(0);
+        return Ok(n);
+    }
+    #[cfg(not(windows))]
+    Ok(0)
 }
 
 #[cfg(desktop)]
@@ -653,7 +695,19 @@ pub fn run() {
                             }
                             h.emit("queue", v)
                         }
-                        Event::Started(t) => h.emit("started", t),
+                        Event::Started(t) => {
+                            #[cfg(windows)]
+                            if t.source == "youtube" {
+                                let h2 = h.clone();
+                                std::thread::spawn(move || {
+                                    for ms in [1500, 2500, 4000, 8000] {
+                                        std::thread::sleep(std::time::Duration::from_millis(ms));
+                                        route_youtube(&h2);
+                                    }
+                                });
+                            }
+                            h.emit("started", t)
+                        }
                         Event::ExtSeek(p) => h.emit("ext-seek", p),
                         Event::Ended(t, ids) => {
                             let h2 = h.clone();
@@ -708,6 +762,9 @@ pub fn run() {
             });
             #[cfg(desktop)]
             hotkeys(app);
+            if let Some(o) = saved_output(&app.state::<Arc<Core>>()) {
+                app.state::<Arc<Core>>().player.set_device(Some(o.1));
+            }
             #[cfg(desktop)]
             {
                 let mut w = window_builder(app.handle(), "main");
@@ -730,7 +787,7 @@ pub fn run() {
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, format_sizes, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
+            import_spotify, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");
