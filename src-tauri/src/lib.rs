@@ -605,8 +605,9 @@ pub fn run() {
             tauri::async_runtime::spawn(async move { open_window(&app) });
         }))
     };
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     let builder = builder
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .on_window_event(|w, ev| match ev {
             tauri::WindowEvent::CloseRequested { api, .. } if w.label() == "main" => {
                 let others = w.app_handle().webview_windows().values().any(|x| x.label() != "main");
