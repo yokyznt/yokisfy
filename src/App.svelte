@@ -72,11 +72,9 @@
 <div class="app" class:queue-open={ui.queueOpen}>
   <aside class="side">
     <button class="brand" onclick={() => root('home')} aria-label="Yokisfy, inicio">
-      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
-        <rect x="1" y="1" width="30" height="30" rx="9" fill="currentColor" />
-        <rect x="8" y="13" width="3.2" height="10" rx="1.6" class="lb" />
-        <rect x="14.4" y="8" width="3.2" height="15" rx="1.6" class="lb" />
-        <rect x="20.8" y="11" width="3.2" height="12" rx="1.6" class="lb ac" />
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="2" y="2" width="60" height="60" rx="18" fill="currentColor" />
+        <path class="lb" d="M8 36h8l4-9 6 18 6-26 5 17h18M49 30v14" />
       </svg>
       <span>yokisfy</span>
     </button>

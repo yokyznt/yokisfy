@@ -135,15 +135,11 @@ button:disabled {
 }
 
 .logo .lb {
-  fill: var(--bg);
-}
-
-.logo .ac {
-  fill: var(--ac);
-}
-
-[data-theme='light'] .logo .ac {
-  fill: #9bd400;
+  fill: none;
+  stroke: var(--bg);
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .side-nav {
