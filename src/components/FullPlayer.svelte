@@ -2,7 +2,7 @@
   import Icon from './Icon.svelte'
   import Cover from './Cover.svelte'
   import { api } from '../lib/api.js'
-  import { ui, player, fmt } from '../lib/state.svelte.js'
+  import { ui, player, fmt, go } from '../lib/state.svelte.js'
   import { like, trackMenu } from '../lib/actions.js'
 
   let now = $state(performance.now())
@@ -37,7 +37,7 @@
     <div class="fp-meta">
       <div>
         <h2>{t.title}</h2>
-        <p>{t.artist}</p>
+        <p><button class="link-artist" onclick={() => !t.live && go('artist', t.artist)}>{t.artist}</button></p>
       </div>
       <button class="icon-btn like" class:on={ui.liked[t.id]} onclick={() => like(t)} aria-label="Me gusta"><Icon name={ui.liked[t.id] ? 'heartFill' : 'heart'} size={24} /></button>
     </div>

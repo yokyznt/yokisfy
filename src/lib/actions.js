@@ -114,6 +114,7 @@ export function trackMenu(event, t, extra = []) {
         ? { label: 'Descargar', icon: 'download', sub: () => downloadItems(t) }
         : { label: 'Solo streaming', icon: 'download', disabled: true },
     t.albumId ? { label: 'Ir al álbum', icon: 'disc', action: () => go('album', t.albumId) } : null,
+    t.artist && !t.live ? { label: 'Ir al artista', icon: 'mic', action: () => go('artist', t.artist) } : null,
     t.license ? { label: 'Ver licencia', icon: 'info', action: () => openLicense(t.license) } : null,
     ...extra
   ].filter(Boolean)

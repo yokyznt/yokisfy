@@ -99,8 +99,7 @@ pub async fn search(client: &Client, cid: &str, query: &str) -> Result<SearchRes
     Ok(SearchResults {
         tracks: t?.iter().filter_map(track).collect(),
         albums: a?.iter().filter_map(album).collect(),
-        stations: vec![],
-        warnings: vec![],
+        ..Default::default()
     })
 }
 

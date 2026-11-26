@@ -7,6 +7,7 @@
   import Menu from './components/Menu.svelte'
   import Overlays from './components/Overlays.svelte'
   import YtPlayer from './components/YtPlayer.svelte'
+  import Artist from './views/Artist.svelte'
   import Home from './views/Home.svelte'
   import Search from './views/Search.svelte'
   import Album from './views/Album.svelte'
@@ -115,6 +116,7 @@
           {#if ui.view.name === 'home'}<Home />
           {:else if ui.view.name === 'search'}<Search />
           {:else if ui.view.name === 'album'}<Album id={ui.view.param} />
+          {:else if ui.view.name === 'artist'}<Artist id={ui.view.param} />
           {:else if ui.view.name === 'library'}<Library />
           {:else if ui.view.name === 'liked'}<Collection kind="liked" />
           {:else if ui.view.name === 'recent'}<Collection kind="recent" />

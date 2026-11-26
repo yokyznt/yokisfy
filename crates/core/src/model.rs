@@ -68,6 +68,8 @@ pub struct SearchResults {
     pub albums: Vec<Album>,
     #[serde(default)]
     pub stations: Vec<Track>,
+    #[serde(default)]
+    pub artists: Vec<crate::sources::ytmusic::Artist>,
     pub warnings: Vec<String>,
 }
 

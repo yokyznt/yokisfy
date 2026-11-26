@@ -32,6 +32,7 @@
   let quality = $derived.by(() => {
     if (!t) return ''
     if (isLocal(t)) return 'LOCAL'
+    if (t.source === 'youtube') return ''
     const hq = (ui.settings.stream_quality || 'alta') !== 'normal'
     const f = hq ? t.formats?.find((f) => f.kind !== 'wav') : t.formats?.find((f) => f.kind === 'mp3' || f.kind === 'ogg')
     return f ? f.label.split(' ')[0] : 'STREAM'
@@ -85,7 +86,7 @@
       </button>
       <div class="pb-meta">
         <button class="pb-title" onclick={() => t.albumId && go('album', t.albumId)}>{t.title}</button>
-        <span class="pb-artist">{t.artist}</span>
+        <button class="pb-artist link-artist" onclick={() => !t.live && go('artist', t.artist)}>{t.artist}</button>
       </div>
       <button class="icon-btn like" class:on={ui.liked[t.id]} onclick={() => like(t)} aria-label="Me gusta">
         <Icon name={ui.liked[t.id] ? 'heartFill' : 'heart'} size={18} />
@@ -120,7 +121,7 @@
 
   <div class="pb-right">
     {#if t}
-      <span class="tag" title={`Fuente: ${sourceName(t.source)}`}>{quality}</span>
+      {#if quality}<span class="tag" title={`Fuente: ${sourceName(t.source)}`}>{quality}</span>{/if}
       <button class="icon-btn sm" onclick={(e) => trackMenu(e, t)} aria-label="Más opciones"><Icon name="more" size={17} /></button>
     {/if}
     <button class="icon-btn sm" class:active={ui.queueOpen} onclick={() => (ui.queueOpen = !ui.queueOpen)} aria-label="Cola" title="Cola"><Icon name="queue" size={18} /></button>

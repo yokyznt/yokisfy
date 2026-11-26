@@ -284,5 +284,5 @@ pub async fn search(client: &Client, query: &str) -> Result<SearchResults> {
     if matched.len() < 8 {
         matched.extend(fallback.into_iter().take(8 - matched.len()));
     }
-    Ok(SearchResults { tracks: matched, albums, stations: vec![], warnings: vec![] })
+    Ok(SearchResults { tracks: matched, albums, ..Default::default() })
 }

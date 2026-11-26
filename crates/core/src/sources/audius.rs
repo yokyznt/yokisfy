@@ -91,7 +91,7 @@ pub async fn search(client: &Client, query: &str) -> Result<SearchResults> {
     let tp = [("query", query), ("limit", "20")];
     let pp = [("query", query), ("limit", "10")];
     let (t, p) = tokio::join!(get(client, "tracks/search", &tp), get(client, "playlists/search", &pp));
-    Ok(SearchResults { tracks: t?.iter().filter_map(track).collect(), albums: p.unwrap_or_default().iter().filter_map(playlist).collect(), stations: vec![], warnings: vec![] })
+    Ok(SearchResults { tracks: t?.iter().filter_map(track).collect(), albums: p.unwrap_or_default().iter().filter_map(playlist).collect(), ..Default::default() })
 }
 
 pub async fn trending(client: &Client, genre: Option<&str>) -> Result<Vec<Track>> {

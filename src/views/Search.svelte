@@ -2,6 +2,7 @@
   import Icon from '../components/Icon.svelte'
   import TrackList from '../components/TrackList.svelte'
   import AlbumGrid from '../components/AlbumGrid.svelte'
+  import ArtistGrid from '../components/ArtistGrid.svelte'
   import Stations from '../components/Stations.svelte'
   import { api } from '../lib/api.js'
   import { ui } from '../lib/state.svelte.js'
@@ -9,7 +10,6 @@
   let q = $state(ui.searchCache.q)
   let results = $state(ui.searchCache.results)
   let loading = $state(false)
-  let filter = $state('all')
   let showAll = $state(false)
   let input = $state()
   let timer
@@ -42,10 +42,10 @@
     }, 450)
   }
 
-  let tracks = $derived(results ? results.tracks.filter((t) => filter === 'all' || t.source === filter) : [])
-  let albums = $derived(results ? results.albums.filter((a) => filter === 'all' || a.source === filter) : [])
-  let stations = $derived(results && (filter === 'all' || filter === 'radio') ? results.stations || [] : [])
-  let chips = $derived([['all', 'Todo'], ...(ui.settings.jamendo_available ? [['jamendo', 'Jamendo']] : []), ['audius', 'Audius'], ['archive', 'Internet Archive'], ['youtube', 'YouTube'], ['radio', 'Radio']])
+  let tracks = $derived(results ? results.tracks : [])
+  let albums = $derived(results ? results.albums : [])
+  let artists = $derived(results ? results.artists || [] : [])
+  let stations = $derived(results ? results.stations || [] : [])
   const genres = ['jazz', 'lo-fi', 'rock', 'electrónica', 'clásica', 'hip hop', 'ambient', 'folk', 'funk', 'reggae', 'blues', 'piano']
 </script>
 
@@ -64,11 +64,6 @@
       {/each}
     </div>
   {:else}
-    <div class="chips" role="tablist">
-      {#each chips as [k, l]}
-        <button class="chip" class:on={filter === k} onclick={() => (filter = k)} role="tab" aria-selected={filter === k}>{l}</button>
-      {/each}
-    </div>
     {#each results.warnings as w}<p class="warn">{w}</p>{/each}
 
     {#if tracks.length}
@@ -80,19 +75,25 @@
         <TrackList {tracks} limit={showAll ? 0 : 6} />
       </section>
     {/if}
+    {#if artists.length}
+      <section class="sec">
+        <h2 class="h2">Artistas</h2>
+        <ArtistGrid {artists} limit={6} />
+      </section>
+    {/if}
     {#if albums.length}
       <section class="sec">
-        <h2 class="h2">Álbumes y conciertos</h2>
-        <AlbumGrid {albums} />
+        <h2 class="h2">Álbumes</h2>
+        <AlbumGrid {albums} limit={12} />
       </section>
     {/if}
     {#if stations.length}
       <section class="sec">
         <h2 class="h2">Radios en vivo</h2>
-        <Stations {stations} limit={filter === 'radio' ? 0 : 6} />
+        <Stations {stations} limit={6} />
       </section>
     {/if}
-    {#if !tracks.length && !albums.length && !stations.length && !loading}
+    {#if !tracks.length && !albums.length && !artists.length && !stations.length && !loading}
       <p class="empty">Sin resultados para “{ui.searchCache.q}”.</p>
     {/if}
   {/if}

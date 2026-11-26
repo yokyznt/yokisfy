@@ -14,7 +14,7 @@ use library::Library;
 pub use model::*;
 use player::{Event, Listener, Player};
 use reqwest::Client;
-use sources::{archive, audius, jamendo, radio, spotify, youtube};
+use sources::{archive, audius, jamendo, radio, spotify, youtube, ytmusic};
 use futures_util::StreamExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -93,7 +93,7 @@ impl Core {
             },
             audius::search(&self.client, q),
             radio::search(&self.client, q),
-            youtube::search(&self.client, q)
+            ytmusic::search(&self.client, q)
         );
         let mut out = SearchResults::default();
         let mut album_lists = Vec::new();
@@ -120,15 +120,27 @@ impl Core {
             }
             Err(e) => out.warnings.push(format!("Internet Archive: {e}")),
         }
-        out.tracks = interleave(track_lists);
+        let free = interleave(track_lists);
+        let free_albums = interleave(album_lists);
         match yt {
-            Ok(t) => out.tracks.extend(t),
-            Err(e) => out.warnings.push(format!("YouTube: {e}")),
+            Ok((t, a, ar)) => {
+                out.tracks = t;
+                out.albums = a;
+                out.artists = ar;
+            }
+            Err(e) => out.warnings.push(format!("YouTube Music: {e}")),
         }
-        out.albums = interleave(album_lists);
+        out.tracks.extend(free);
+        out.albums.extend(free_albums);
         out.stations = rd.unwrap_or_default();
         out.tracks = self.lib.resolve(out.tracks);
         out
+    }
+
+    pub async fn artist(&self, id: &str) -> Result<ytmusic::ArtistDetail> {
+        let mut d = if id.starts_with("UC") && !id.contains(' ') { ytmusic::artist(&self.client, id).await? } else { ytmusic::artist_by_name(&self.client, id).await? };
+        d.top = self.lib.resolve(d.top);
+        Ok(d)
     }
 
     pub async fn stations(&self, q: &str) -> Result<Vec<Track>> {
@@ -143,6 +155,8 @@ impl Core {
             jamendo::album_detail(&self.client, &cid, jm).await?
         } else if let Some(au) = id.strip_prefix("au:") {
             audius::album(&self.client, au).await?
+        } else if let Some(yt) = id.strip_prefix("ytm:") {
+            ytmusic::album(&self.client, yt).await?
         } else {
             return Err(Error::Msg("Fuente desconocida".into()));
         };

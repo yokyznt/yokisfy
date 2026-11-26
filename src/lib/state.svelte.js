@@ -100,12 +100,12 @@ export function totalTime(tracks) {
 }
 
 export function sourceName(s) {
-  return { jamendo: 'Jamendo', archive: 'Internet Archive', audius: 'Audius', radio: 'Radio', local: 'Local', youtube: 'YouTube' }[s] || s
+  return { jamendo: 'Jamendo', archive: 'Internet Archive', audius: 'Audius', radio: 'Radio', local: 'Local', youtube: 'YouTube Music' }[s] || s
 }
 
 export function bestLabel(t) {
   if (ui.local[t.id] || t.localPath) return null
-  const f = t.formats?.find((f) => f.kind !== 'wav')
+  const f = t.formats?.find((f) => f.kind !== 'wav' && f.kind !== 'yt')
   return f ? f.label.split(' ')[0] : null
 }
 

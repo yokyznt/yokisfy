@@ -180,6 +180,11 @@ async fn download(app: AppHandle, core: C<'_>, track: Track, kind: Option<String
 }
 
 #[tauri::command]
+async fn artist(core: C<'_>, id: String) -> R<yokisfy_core::sources::ytmusic::ArtistDetail> {
+    core.artist(&id).await
+}
+
+#[tauri::command]
 async fn import_spotify(app: AppHandle, core: C<'_>, link: String) -> R<yokisfy_core::ImportResult> {
     let h = app.clone();
     core.import_spotify(&link, &move |done, total| {
@@ -384,7 +389,7 @@ pub fn run() {
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, ext_progress, ext_ended, ext_failed
+            import_spotify, artist, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");

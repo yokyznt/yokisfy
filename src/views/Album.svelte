@@ -3,7 +3,7 @@
   import Cover from '../components/Cover.svelte'
   import TrackList from '../components/TrackList.svelte'
   import { api } from '../lib/api.js'
-  import { player, sourceName, totalTime, openMenu, isLocal } from '../lib/state.svelte.js'
+  import { player, sourceName, totalTime, openMenu, isLocal, go } from '../lib/state.svelte.js'
   import { smartDownload, playlistItems, openLicense, canDownload } from '../lib/actions.js'
 
   let { id } = $props()
@@ -41,7 +41,7 @@
         <span class="label">Álbum · {sourceName(data.album.source)}</span>
         <h1 class="hero-title">{data.album.title}</h1>
         <p class="hero-sub">
-          <strong>{data.album.artist}</strong>
+          <button class="link-artist strong" onclick={() => go('artist', data.album.artist)}>{data.album.artist}</button>
           {#if data.album.year}<span>· {data.album.year}</span>{/if}
           <span>· {data.tracks.length} canciones, {totalTime(data.tracks)}</span>
         </p>

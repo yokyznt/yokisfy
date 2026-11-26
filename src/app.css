@@ -990,7 +990,7 @@ button:disabled {
   margin: 10px 0 0;
 }
 
-.empty {
+.empty:not(.pb) {
   color: var(--tx-2);
   padding: 40px 0;
   max-width: 420px;
@@ -1852,35 +1852,51 @@ button:disabled {
 
 .yt {
   position: fixed;
-  right: 16px;
-  bottom: calc(var(--bar) + 12px);
-  z-index: 30;
-  display: none;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px;
-  border-radius: 12px;
-  background: var(--bg-2);
-  border: 1px solid var(--line-2);
-  box-shadow: var(--shadow);
-}
-
-.yt.on {
-  display: flex;
-}
-
-.yt-label {
-  font-size: 12px;
-  color: var(--tx-2);
-  padding: 0 2px;
+  left: 0;
+  bottom: 0;
+  width: 200px;
+  height: 200px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .yt iframe {
-  width: 356px;
+  width: 200px;
   height: 200px;
   border: 0;
-  border-radius: 8px;
-  background: #000;
+}
+
+.link-artist {
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.link-artist:hover {
+  color: var(--tx);
+  text-decoration: underline;
+}
+
+.link-artist.strong {
+  color: var(--tx);
+  font-weight: 600;
+}
+
+.artist-card {
+  text-align: left;
+  align-items: stretch;
+}
+
+.card-art.round,
+.skel-cover.round {
+  border-radius: 50%;
+  overflow: hidden;
 }
 
 .import-card {
@@ -1937,15 +1953,6 @@ button:disabled {
 }
 
 @media (max-width: 760px) {
-  .yt {
-    left: 8px;
-    right: 8px;
-    bottom: calc(var(--bar) + 62px + env(safe-area-inset-bottom) + 8px);
-    align-items: center;
-  }
-  .yt iframe {
-    width: min(356px, 100%);
-  }
   :root {
     --bar: 64px;
   }

@@ -114,8 +114,7 @@
 <svelte:window onmessage={onMessage} />
 
 {#if firstId}
-  <div class="yt" class:on={active} aria-hidden={!active}>
-    <span class="yt-label">Sonando desde YouTube · no se descarga</span>
-    <iframe bind:this={frame} {src} title="Reproductor de YouTube" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" onload={hello}></iframe>
+  <div class="yt" aria-hidden="true">
+    <iframe bind:this={frame} {src} title="Reproductor" tabindex="-1" allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin" onload={hello}></iframe>
   </div>
 {/if}
