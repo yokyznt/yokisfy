@@ -123,7 +123,7 @@
 
   <div class="pb-right">
     {#if t}
-      {#if quality}<span class="tag" title={`Fuente: ${sourceName(t.source)}`}>{quality}</span>{/if}
+      {#if quality && t.source !== 'youtube'}<span class="tag" title={`Fuente: ${sourceName(t.source)}`}>{quality}</span>{/if}
       <button class="icon-btn sm" class:active={!!ui.sleep} onclick={(e) => openMenu(e, sleepItems())} aria-label="Temporizador para dormir" title={ui.sleep ? `Se pausa ${ui.sleep.label === 'al terminar la canción' ? 'al terminar la canción' : 'en ' + ui.sleep.label}` : 'Temporizador para dormir'}><Icon name="moon" size={18} /></button>
       {#if !t.live}<button class="icon-btn sm" class:active={ui.lyrics && ui.fullPlayer} onclick={() => { ui.lyrics = true; ui.fpMode = 'lyrics'; ui.fullPlayer = true }} aria-label="Letra" title="Letra"><Icon name="lyrics" size={18} /></button>{/if}
       <button class="icon-btn sm" onclick={(e) => trackMenu(e, t)} aria-label="Más opciones"><Icon name="more" size={17} /></button>

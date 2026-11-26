@@ -199,14 +199,14 @@ fn song(r: &Value, album: Option<(&str, &str, Option<&str>)>) -> Option<Track> {
         source: "youtube".into(),
         title,
         artist: if artists.is_empty() { album.map(|a| a.1.to_string()).unwrap_or_default() } else { artists.join(", ") },
-        album: album_name.unwrap_or_else(|| "YouTube Music".into()),
+        album: album_name.unwrap_or_default(),
         album_id,
         track_no,
         duration,
         cover,
         stream_url: vid.to_string(),
         formats: vec![Format { kind: "yt".into(), label: "YouTube".into(), url: vid.to_string(), size: None }],
-        license: Some("Se escucha desde YouTube Music; no se descarga".into()),
+        license: None,
         downloadable: false,
         local_path: None,
         genre: None,
@@ -417,7 +417,7 @@ pub async fn playlist(client: &Client, id: &str) -> Result<(String, Option<Strin
     let v = call(client, "browse", json!({ "browseId": bid })).await?;
     let tc = &v["contents"]["twoColumnBrowseResultsRenderer"];
     let h = &tc["tabs"][0]["tabRenderer"]["content"]["sectionListRenderer"]["contents"][0]["musicResponsiveHeaderRenderer"];
-    let name = Some(text(&h["title"])).filter(|s| !s.is_empty()).unwrap_or_else(|| "Playlist de YouTube Music".into());
+    let name = Some(text(&h["title"])).filter(|s| !s.is_empty()).unwrap_or_else(|| "Playlist".into());
     let cover = thumb(&h["thumbnail"]);
     let mut items = Vec::new();
     list_items(&tc["secondaryContents"], &mut items);
@@ -536,7 +536,7 @@ pub async fn home(client: &Client) -> Result<Home> {
 pub async fn playlist_album(client: &Client, id: &str) -> Result<AlbumDetail> {
     let (name, cover, tracks) = playlist(client, id).await?;
     Ok(AlbumDetail {
-        album: Album { id: format!("ytpl:{id}"), source: "youtube".into(), title: name, artist: "YouTube Music".into(), cover, year: None, license: None },
+        album: Album { id: format!("ytpl:{id}"), source: "youtube".into(), title: name, artist: String::new(), cover, year: None, license: None },
         tracks,
     })
 }
@@ -555,14 +555,14 @@ fn panel(v: &Value, out: &mut Vec<Track>) {
                         source: "youtube".into(),
                         title: text(&r["title"]),
                         artist,
-                        album: album.and_then(|a| a["text"].as_str()).unwrap_or("YouTube Music").to_string(),
+                        album: album.and_then(|a| a["text"].as_str()).unwrap_or_default().to_string(),
                         album_id: album.and_then(|a| a["navigationEndpoint"]["browseEndpoint"]["browseId"].as_str()).map(|b| format!("ytm:{b}")),
                         track_no: None,
                         duration: r["lengthText"]["runs"][0]["text"].as_str().map(parse_len).unwrap_or(0.0),
                         cover: r["thumbnail"]["thumbnails"].as_array().and_then(|a| a.last()).and_then(|t| t["url"].as_str()).map(big),
                         stream_url: vid.to_string(),
                         formats: vec![Format { kind: "yt".into(), label: "YouTube".into(), url: vid.to_string(), size: None }],
-                        license: Some("Se escucha desde YouTube Music; no se descarga".into()),
+                        license: None,
                         downloadable: false,
                         local_path: None,
                         genre: None,

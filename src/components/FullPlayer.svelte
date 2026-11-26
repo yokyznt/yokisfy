@@ -74,6 +74,10 @@
     return () => clearTimeout(idleTimer)
   })
 
+  $effect(() => {
+    ui.fpIdle = !!ui.fullPlayer && idle && immersive
+  })
+
   function setMode(m) {
     ui.fpMode = mode === m ? 'cover' : m
     ui.lyrics = ui.fpMode === 'lyrics'
@@ -96,6 +100,8 @@
   <section class="fp" class:immersive class:idle={idle && immersive} class:m-lyrics={mode === 'lyrics'} class:m-visual={mode === 'visual'} aria-label="Reproductor" onmousemove={wake} onpointerdown={wake} ontouchstart={wake}>
     {#if mode === 'visual'}
       <Visualizer {colors} {preset} />
+    {:else if mode === 'lyrics'}
+      <Visualizer {colors} modes={[0, 3, 5, 1, 6]} every={28} dim={0.45} />
     {:else}
       <Backdrop cover={t.cover} {colors} intense={mode === 'lyrics'} />
     {/if}

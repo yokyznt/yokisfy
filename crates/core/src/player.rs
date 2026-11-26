@@ -6,7 +6,7 @@ use rodio::{OutputStream, Sink, Source};
 use serde::Serialize;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -86,6 +86,14 @@ enum Cmd {
 pub struct Player {
     tx: Sender<Cmd>,
     pub high_quality: Arc<AtomicBool>,
+    pub crossfade_ms: Arc<AtomicU32>,
+}
+
+struct Fade {
+    sink: Sink,
+    at: Instant,
+    secs: f64,
+    from: f32,
 }
 
 fn hint(url: &str) -> &'static str {
@@ -154,6 +162,9 @@ struct Engine {
     fails: usize,
     external: bool,
     ext_pos: f64,
+    ext_at: Option<std::time::Instant>,
+    pending_xf: f64,
+    fade_in: Option<(Instant, f64)>,
 }
 
 impl Engine {
@@ -179,7 +190,8 @@ impl Player {
     pub fn new(listener: Listener) -> Self {
         let (tx, rx) = channel::<Cmd>();
         let high = Arc::new(AtomicBool::new(true));
-        let me = Player { tx: tx.clone(), high_quality: high.clone() };
+        let xfade = Arc::new(AtomicU32::new(5000));
+        let me = Player { tx: tx.clone(), high_quality: high.clone(), crossfade_ms: xfade.clone() };
         std::thread::Builder::new()
             .name("yk-audio".into())
             .spawn(move || {
@@ -200,7 +212,7 @@ impl Player {
                         return;
                     }
                 };
-                let sink = Sink::try_new(&handle).expect("sink");
+                let mut sink = Sink::try_new(&handle).expect("sink");
                 let mut e = Engine {
                     queue: vec![],
                     order: vec![],
@@ -217,7 +229,13 @@ impl Player {
                     fails: 0,
                     external: false,
                     ext_pos: 0.0,
+                    ext_at: None,
+                    pending_xf: 0.0,
+                    fade_in: None,
                 };
+                let mut fading: Vec<Fade> = Vec::new();
+                let xf_secs = || xfade.load(Ordering::Relaxed) as f64 / 1000.0;
+                let short = || xf_secs().min(1.5);
                 let status = |e: &Engine, sink: &Sink| -> Status {
                     let idx = e.current();
                     Status {
@@ -226,7 +244,7 @@ impl Player {
                         queue_len: e.queue.len(),
                         playing: e.want_play,
                         loading: e.loading,
-                        position: if e.external { e.ext_pos } else if e.loaded { sink.get_pos().as_secs_f64() } else { 0.0 },
+                        position: if e.external { e.ext_pos + if e.want_play { e.ext_at.map(|a| a.elapsed().as_secs_f64().min(2.0)).unwrap_or(0.0) } else { 0.0 } } else if e.loaded { sink.get_pos().as_secs_f64() } else { 0.0 },
                         duration: e.duration,
                         volume: e.volume,
                         shuffle: e.shuffle,
@@ -235,9 +253,22 @@ impl Player {
                         external: e.external,
                     }
                 };
-                let load = |e: &mut Engine, sink: &Sink| {
+                let load = |e: &mut Engine, sink: &mut Sink, fading: &mut Vec<Fade>, xf: f64| {
                     e.gen += 1;
-                    sink.clear();
+                    let can = xf > 0.05 && e.loaded && !e.loading && !e.external && e.want_play && !sink.empty() && !sink.is_paused();
+                    let mut swapped = false;
+                    if can {
+                        if let Ok(ns) = Sink::try_new(&handle) {
+                            let old = std::mem::replace(sink, ns);
+                            fading.push(Fade { sink: old, at: Instant::now(), secs: xf, from: e.volume * e.volume });
+                            swapped = true;
+                        }
+                    }
+                    if !swapped {
+                        sink.clear();
+                    }
+                    e.pending_xf = if swapped { xf } else { 0.0 };
+                    e.fade_in = None;
                     e.loaded = false;
                     e.error = None;
                     let Some(i) = e.current() else {
@@ -249,6 +280,7 @@ impl Player {
                     e.duration = track.duration;
                     e.external = track.source == "youtube" && track.local_path.is_none();
                     e.ext_pos = 0.0;
+                    e.ext_at = None;
                     if e.external {
                         e.loading = false;
                         e.loaded = true;
@@ -264,7 +296,7 @@ impl Player {
                         let _ = tx.send(Cmd::Ready(gen, open_media(&track, hq)));
                     });
                 };
-                let advance = |e: &mut Engine, sink: &Sink, auto: bool| {
+                let advance = |e: &mut Engine, sink: &mut Sink, fading: &mut Vec<Fade>, auto: bool, xf: f64| {
                     if e.queue.is_empty() {
                         return;
                     }
@@ -288,13 +320,14 @@ impl Player {
                         }
                         return;
                     }
-                    load(e, sink);
+                    load(e, sink, fading, xf);
                 };
                 let mut last_emit = Instant::now();
                 loop {
                     let mut dirty = false;
                     let mut queue_dirty = false;
-                    match rx.recv_timeout(Duration::from_millis(200)) {
+                    let wait = if fading.is_empty() && e.fade_in.is_none() { 200 } else { 25 };
+                    match rx.recv_timeout(Duration::from_millis(wait)) {
                         Ok(cmd) => {
                             dirty = true;
                             match cmd {
@@ -305,38 +338,63 @@ impl Player {
                                     e.want_play = true;
                                     e.fails = 0;
                                     queue_dirty = true;
-                                    load(&mut e, &sink);
+                                    load(&mut e, &mut sink, &mut fading, short());
                                 }
                                 Cmd::Toggle => {
+                                    if e.external {
+                                        if let Some(a) = e.ext_at.take() {
+                                            if e.want_play {
+                                                e.ext_pos += a.elapsed().as_secs_f64().min(2.0);
+                                            }
+                                        }
+                                    }
                                     e.want_play = !e.want_play;
                                     if e.want_play {
                                         if e.loaded {
                                             sink.play();
                                         } else if !e.loading {
-                                            load(&mut e, &sink);
+                                            load(&mut e, &mut sink, &mut fading, 0.0);
                                         }
                                     } else {
                                         sink.pause();
+                                        for f in fading.drain(..) {
+                                            f.sink.stop();
+                                        }
                                     }
                                 }
                                 Cmd::SetPlaying(p) => {
+                                    if e.external {
+                                        if let Some(a) = e.ext_at.take() {
+                                            if e.want_play {
+                                                e.ext_pos += a.elapsed().as_secs_f64().min(2.0);
+                                            }
+                                        }
+                                    }
                                     e.want_play = p;
-                                    if p { sink.play() } else { sink.pause() }
+                                    if p {
+                                        sink.play()
+                                    } else {
+                                        sink.pause();
+                                        for f in fading.drain(..) {
+                                            f.sink.stop();
+                                        }
+                                    }
                                 }
                                 Cmd::Next => {
                                     e.want_play = true;
-                                    advance(&mut e, &sink, false);
+                                    advance(&mut e, &mut sink, &mut fading, false, short());
                                 }
                                 Cmd::Prev => {
                                     if e.external && e.ext_pos > 3.0 {
                                         e.ext_pos = 0.0;
+                                        e.ext_at = None;
                                         listener(Event::ExtSeek(0.0));
                                     } else if !e.external && e.loaded && sink.get_pos().as_secs_f64() > 3.0 {
                                         let _ = sink.try_seek(Duration::ZERO);
                                     } else if e.pos > 0 {
                                         e.pos -= 1;
                                         e.want_play = true;
-                                        load(&mut e, &sink);
+                                        load(&mut e, &mut sink, &mut fading, short());
                                     } else if e.loaded {
                                         let _ = sink.try_seek(Duration::ZERO);
                                     }
@@ -344,6 +402,7 @@ impl Player {
                                 Cmd::Seek(s) => {
                                     if e.external {
                                         e.ext_pos = s.max(0.0);
+                                        e.ext_at = None;
                                         listener(Event::ExtSeek(e.ext_pos));
                                     } else if e.loaded {
                                         if let Err(err) = sink.try_seek(Duration::from_secs_f64(s.max(0.0))) {
@@ -353,7 +412,9 @@ impl Player {
                                 }
                                 Cmd::Volume(v) => {
                                     e.volume = v.clamp(0.0, 1.0);
-                                    sink.set_volume(e.volume * e.volume);
+                                    if e.fade_in.is_none() {
+                                        sink.set_volume(e.volume * e.volume);
+                                    }
                                 }
                                 Cmd::Enqueue(ts) => {
                                     let start = e.queue.len();
@@ -376,7 +437,7 @@ impl Player {
                                     if let Some(p) = e.order.iter().position(|o| *o == i) {
                                         e.pos = p;
                                         e.want_play = true;
-                                        load(&mut e, &sink);
+                                        load(&mut e, &mut sink, &mut fading, short());
                                     }
                                 }
                                 Cmd::Remove(i) => {
@@ -411,6 +472,7 @@ impl Player {
                                 Cmd::ExtProgress(p, d) => {
                                     if e.external {
                                         e.ext_pos = p;
+                                        e.ext_at = Some(std::time::Instant::now());
                                         if d > 0.0 {
                                             e.duration = d;
                                         }
@@ -419,7 +481,7 @@ impl Player {
                                 }
                                 Cmd::ExtEnded => {
                                     if e.external {
-                                        advance(&mut e, &sink, true);
+                                        advance(&mut e, &mut sink, &mut fading, true, 0.0);
                                     }
                                 }
                                 Cmd::ExtFailed(err) => {
@@ -428,7 +490,7 @@ impl Player {
                                         e.fails += 1;
                                         if e.fails < 3 && e.pos + 1 < e.order.len() {
                                             let msg = e.error.clone();
-                                            advance(&mut e, &sink, false);
+                                            advance(&mut e, &mut sink, &mut fading, false, 0.0);
                                             e.error = msg;
                                         } else {
                                             e.want_play = false;
@@ -443,7 +505,13 @@ impl Player {
                                                 if e.duration <= 0.0 {
                                                     e.duration = dec.total_duration().map(|d| d.as_secs_f64()).unwrap_or(0.0);
                                                 }
-                                                sink.set_volume(e.volume * e.volume);
+                                                if e.pending_xf > 0.0 {
+                                                    sink.set_volume(0.0);
+                                                    e.fade_in = Some((Instant::now(), e.pending_xf));
+                                                } else {
+                                                    sink.set_volume(e.volume * e.volume);
+                                                }
+                                                e.pending_xf = 0.0;
                                                 sink.append(dec);
                                                 if e.want_play { sink.play() } else { sink.pause() }
                                                 e.loaded = true;
@@ -457,7 +525,7 @@ impl Player {
                                                 e.fails += 1;
                                                 if e.fails < 3 && e.pos + 1 < e.order.len() {
                                                     let msg = e.error.clone();
-                                                    advance(&mut e, &sink, false);
+                                                    advance(&mut e, &mut sink, &mut fading, false, 0.0);
                                                     e.error = msg;
                                                 } else {
                                                     e.want_play = false;
@@ -472,8 +540,37 @@ impl Player {
                         Err(RecvTimeoutError::Disconnected) => break,
                     }
                     if e.loaded && !e.loading && !e.external && e.want_play && sink.empty() {
-                        advance(&mut e, &sink, true);
+                        advance(&mut e, &mut sink, &mut fading, true, 0.0);
                         dirty = true;
+                    }
+                    let cf = xf_secs();
+                    let has_next = e.repeat != "off" || e.pos + 1 < e.order.len();
+                    if cf > 0.05 && has_next && e.loaded && !e.loading && !e.external && e.want_play && !sink.empty() && e.duration > cf * 3.0 {
+                        let left = e.duration - sink.get_pos().as_secs_f64();
+                        if left <= cf {
+                            advance(&mut e, &mut sink, &mut fading, true, left.max(0.8));
+                            dirty = true;
+                        }
+                    }
+                    fading.retain(|f| {
+                        let t = f.at.elapsed().as_secs_f64() / f.secs.max(0.05);
+                        if t >= 1.0 || f.sink.empty() {
+                            f.sink.stop();
+                            false
+                        } else {
+                            f.sink.set_volume(f.from * ((t * std::f64::consts::FRAC_PI_2).cos() as f32));
+                            true
+                        }
+                    });
+                    if let Some((at, secs)) = e.fade_in {
+                        let t = at.elapsed().as_secs_f64() / secs.max(0.05);
+                        let full = e.volume * e.volume;
+                        if t >= 1.0 || !e.want_play {
+                            sink.set_volume(full);
+                            e.fade_in = None;
+                        } else {
+                            sink.set_volume(full * ((t * std::f64::consts::FRAC_PI_2).sin() as f32));
+                        }
                     }
                     if queue_dirty {
                         let ordered: Vec<Track> = e.queue.clone();

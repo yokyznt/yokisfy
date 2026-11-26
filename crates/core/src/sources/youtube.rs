@@ -197,7 +197,7 @@ pub fn to_track(v: &Video, alts: &[Video], title: Option<&str>, artist: Option<&
         cover: Some(format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", v.id)),
         stream_url: v.id.clone(),
         formats,
-        license: Some("Se escucha en el reproductor oficial de YouTube; no se descarga".into()),
+        license: None,
         downloadable: false,
         local_path: None,
         genre: None,

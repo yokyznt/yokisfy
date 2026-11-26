@@ -179,6 +179,58 @@ async fn download(app: AppHandle, core: C<'_>, track: Track, kind: Option<String
     .await
 }
 
+static LAST_STATUS: std::sync::Mutex<Option<serde_json::Value>> = std::sync::Mutex::new(None);
+static LAST_QUEUE: std::sync::Mutex<Option<serde_json::Value>> = std::sync::Mutex::new(None);
+
+#[tauri::command]
+fn snapshot() -> serde_json::Value {
+    json!({ "player": LAST_STATUS.lock().ok().and_then(|g| g.clone()), "queue": LAST_QUEUE.lock().ok().and_then(|g| g.clone()) })
+}
+
+#[cfg(desktop)]
+fn window_builder<'a>(app: &'a AppHandle, label: &'a str) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
+    WebviewWindowBuilder::new(app, label, WebviewUrl::default())
+        .title("Yokisfy")
+        .inner_size(1280.0, 820.0)
+        .min_inner_size(360.0, 600.0)
+        .decorations(false)
+        .shadow(true)
+}
+
+#[cfg(desktop)]
+fn open_window(app: &AppHandle) {
+    if let Some(m) = app.get_webview_window("main") {
+        if !m.is_visible().unwrap_or(true) {
+            let _ = m.show();
+            let _ = m.set_focus();
+            return;
+        }
+    }
+    let n = (2..100).find(|i| app.get_webview_window(&format!("w{i}")).is_none()).unwrap_or(99);
+    let label = format!("w{n}");
+    let mut b = window_builder(app, &label);
+    if let Some(src) = app.webview_windows().into_values().find(|w| w.is_focused().unwrap_or(false)).or_else(|| app.get_webview_window("main")) {
+        if let (Ok(p), Ok(s)) = (src.outer_position(), src.scale_factor()) {
+            let l = p.to_logical::<f64>(s);
+            b = b.position(l.x + 40.0, l.y + 40.0);
+        }
+    }
+    let _ = b.build();
+}
+
+#[tauri::command]
+async fn new_window(app: AppHandle) {
+    #[cfg(desktop)]
+    open_window(&app);
+    #[cfg(mobile)]
+    let _ = app;
+}
+
+#[tauri::command]
+async fn format_sizes(core: C<'_>, urls: Vec<String>) -> R<Vec<Option<u64>>> {
+    Ok(core.format_sizes(urls).await)
+}
+
 #[tauri::command]
 fn levels() -> [f32; 3] {
     yokisfy_core::audio::levels()
@@ -205,9 +257,9 @@ async fn free_versions(app: AppHandle, core: C<'_>, tracks: Vec<Track>) -> R<Vec
 }
 
 #[tauri::command]
-async fn download_as(app: AppHandle, core: C<'_>, original: Track, free: Track) -> R<Track> {
+async fn download_as(app: AppHandle, core: C<'_>, original: Track, free: Track, kind: Option<String>) -> R<Track> {
     let h = app.clone();
-    core.download_as(original, free, &move |p: Progress| {
+    core.download_as(original, free, kind, &move |p: Progress| {
         let _ = h.emit("download", p);
     })
     .await
@@ -304,7 +356,7 @@ fn server_password(core: &Core) -> String {
 }
 
 async fn apply_server(core: &Core, srv: &Srv) {
-    let want = core.lib.setting("share_library").as_deref() == Some("on");
+    let want = cfg!(desktop) && core.lib.setting("share_library").as_deref() != Some("off");
     let mut g = srv.lock().await;
     if !want {
         *g = None;
@@ -354,7 +406,30 @@ fn push_media(h: &AppHandle, s: &yokisfy_core::player::Status) {
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    let builder = builder
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move { open_window(&app) });
+        }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .on_window_event(|w, ev| match ev {
+            tauri::WindowEvent::CloseRequested { api, .. } if w.label() == "main" => {
+                let others = w.app_handle().webview_windows().values().any(|x| x.label() != "main");
+                if others {
+                    api.prevent_close();
+                    let _ = w.hide();
+                }
+            }
+            tauri::WindowEvent::Destroyed if w.label() != "main" => {
+                let app = w.app_handle();
+                let main_hidden = app.get_webview_window("main").map(|m| !m.is_visible().unwrap_or(true)).unwrap_or(true);
+                let others = app.webview_windows().values().any(|x| x.label() != "main" && x.label() != w.label());
+                if main_hidden && !others {
+                    app.exit(0);
+                }
+            }
+            _ => {}
+        });
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -369,8 +444,19 @@ pub fn run() {
                         push_media(&h, s);
                     }
                     let _ = match e {
-                        Event::Status(s) => h.emit("player", s),
-                        Event::Queue(q, i) => h.emit("queue", json!({ "tracks": q, "index": i })),
+                        Event::Status(s) => {
+                            if let Ok(mut g) = LAST_STATUS.lock() {
+                                *g = serde_json::to_value(&s).ok();
+                            }
+                            h.emit("player", s)
+                        }
+                        Event::Queue(q, i) => {
+                            let v = json!({ "tracks": q, "index": i });
+                            if let Ok(mut g) = LAST_QUEUE.lock() {
+                                *g = Some(v.clone());
+                            }
+                            h.emit("queue", v)
+                        }
                         Event::Started(t) => h.emit("started", t),
                         Event::ExtSeek(p) => h.emit("ext-seek", p),
                         Event::Ended(t, ids) => {
@@ -426,10 +512,7 @@ pub fn run() {
             });
             #[cfg(desktop)]
             {
-                let mut w = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
-                    .title("Yokisfy")
-                    .inner_size(1280.0, 820.0)
-                    .min_inner_size(360.0, 600.0);
+                let mut w = window_builder(app.handle(), "main");
                 if let Ok(pos) = std::env::var("YOKISFY_DEV_POS") {
                     let p: Vec<f64> = pos.split(',').filter_map(|x| x.trim().parse().ok()).collect();
                     if p.len() >= 2 {
@@ -448,8 +531,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
-            recent, downloads, download, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
+            recent, downloads, download, format_sizes, delete_download, settings, set_setting, server_info, pc_library,
+            import_spotify, snapshot, new_window, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");

@@ -38,7 +38,8 @@
   let hq = $derived((ui.settings.stream_quality || 'alta') !== 'normal')
   let fmt = $derived(ui.settings.download_format || 'ask')
   let auto = $derived(ui.settings.autoplay !== 'off')
-  let share = $derived(ui.settings.share_library === 'on')
+  let xf = $derived(Number(ui.settings.crossfade ?? 5))
+  let share = $derived(ui.settings.share_library !== 'off')
   let srv = $state({ on: false })
   async function loadSrv() {
     srv = await api.serverInfo()
@@ -74,6 +75,10 @@
         <span class="pill" class:ok={on}>{on ? 'Activa' : 'No disponible'}</span>
       </div>
     {/each}
+    <div class="set-row col">
+      <span class="set-name">Desvanecer entre canciones · <span class="mono">{xf ? `${xf} s` : 'apagado'}</span></span>
+      <input type="range" class="range" min="0" max="12" step="1" value={xf} style={`--p:${(xf / 12) * 100}%`} oninput={(e) => (ui.settings.crossfade = e.currentTarget.value)} onchange={(e) => save('crossfade', e.currentTarget.value)} aria-label="Segundos de desvanecimiento" />
+    </div>
     <div class="set-row">
       <span class="set-name">Radio automática al terminar la cola</span>
       <button class="switch" role="switch" aria-checked={auto} aria-label="Radio automática" onclick={() => save('autoplay', auto ? 'off' : 'on')}><i></i></button>
@@ -92,7 +97,7 @@
   <section class="set">
     <h2 class="label">Escuchar en el celular</h2>
     <div class="set-row">
-      <span class="set-name">Compartir mis descargas y playlists en la red de casa</span>
+      <span class="set-name">Compartir mis descargas y la carpeta Música con el celular</span>
       <button class="switch" role="switch" aria-checked={share} aria-label="Compartir biblioteca" onclick={toggleShare}><i></i></button>
     </div>
     {#if srv.on}
@@ -117,8 +122,8 @@
     <div class="set-row col">
       <span class="set-name">Formato al descargar</span>
       <div class="seg">
-        {#each [['ask', 'Preguntar'], ['flac', 'FLAC'], ['mp3', 'MP3'], ['ogg', 'OGG']] as [k, l]}
-          <button class:on={fmt === k} onclick={() => save('download_format', k)}>{l}</button>
+        {#each [['ask', 'Preguntar'], ['lossless', 'Sin pérdida'], ['high', 'Alta'], ['normal', 'Ligera']] as [k, l]}
+          <button class:on={({ flac: 'lossless', mp3: 'high', ogg: 'high' }[fmt] || fmt) === k} onclick={() => save('download_format', k)}>{l}</button>
         {/each}
       </div>
     </div>

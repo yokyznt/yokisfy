@@ -8,6 +8,7 @@
   import Overlays from './components/Overlays.svelte'
   import YtPlayer from './components/YtPlayer.svelte'
   import Artist from './views/Artist.svelte'
+  import WinControls from './components/WinControls.svelte'
   import Home from './views/Home.svelte'
   import Search from './views/Search.svelte'
   import Album from './views/Album.svelte'
@@ -21,6 +22,13 @@
   import { newPlaylist, importSpotify } from './lib/actions.js'
 
   let ready = $state(false)
+  const isMainWin = (() => {
+    try {
+      return (window.__TAURI_INTERNALS__?.metadata?.currentWindow?.label || 'main') === 'main'
+    } catch {
+      return true
+    }
+  })()
   $effect(() => {
     boot().finally(() => (ready = true))
   })
@@ -106,7 +114,7 @@
   </aside>
 
   <main class="view">
-    <div class="topbar">
+    <div class="topbar" data-tauri-drag-region>
       <button class="icon-btn round" onclick={back} disabled={!ui.stack.length} aria-label="Atrás"><Icon name="back" size={18} /></button>
       <button class="icon-btn round mob-only" onclick={() => root('settings')} aria-label="Ajustes"><Icon name="settings" size={18} /></button>
     </div>
@@ -146,4 +154,5 @@
 <FullPlayer />
 <Menu />
 <Overlays />
-<YtPlayer />
+{#if isMainWin}<YtPlayer />{/if}
+{#if ready && !ui.settings.mobile}<WinControls />{/if}

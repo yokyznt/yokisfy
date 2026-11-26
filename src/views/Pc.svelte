@@ -2,8 +2,8 @@
   import Icon from '../components/Icon.svelte'
   import TrackList from '../components/TrackList.svelte'
   import { api } from '../lib/api.js'
-  import { ui, toast } from '../lib/state.svelte.js'
-  import { download } from '../lib/actions.js'
+  import { ui } from '../lib/state.svelte.js'
+  import { smartDownload } from '../lib/actions.js'
 
   let state = $state(ui.pcCache ? 'ok' : 'loading')
   let name = $state(ui.pcCache?.name || '')
@@ -30,9 +30,8 @@
   let shown = $derived(q.trim() ? tracks.filter((t) => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(q.trim().toLowerCase())) : tracks)
   let missing = $derived(tracks.filter((t) => !ui.local[t.id]))
 
-  async function saveAll() {
-    toast(`Guardando ${missing.length} canciones en el celular`)
-    for (const t of missing) await download(t, t.formats[0]?.label)
+  function saveAll(e) {
+    smartDownload(e, missing)
   }
 </script>
 

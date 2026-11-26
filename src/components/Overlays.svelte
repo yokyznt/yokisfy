@@ -2,6 +2,7 @@
   import Icon from './Icon.svelte'
   import { ui } from '../lib/state.svelte.js'
   import { installUpdate } from '../lib/update.js'
+  import QualityDialog from './QualityDialog.svelte'
   let input = $state()
   let value = $state('')
 
@@ -33,6 +34,8 @@
     </div>
   </form>
 {/if}
+
+<QualityDialog />
 
 {#if ui.update && !ui.update.dismissed}
   <div class="update-card" role="status">

@@ -1,8 +1,37 @@
 <script>
+  import { untrack } from 'svelte'
   import { levels, useLevels } from '../lib/levels.js'
 
-  let { colors = [], preset = 0 } = $props()
+  let { colors = [], preset = 0, modes = [0, 1, 2, 3, 4, 5, 6], every = 22, dim = 0 } = $props()
   let canvas = $state()
+  let slot = $state(0)
+  let swap = $state(false)
+  let mode = $derived(modes[slot % modes.length])
+  let first = true
+
+  function change(to) {
+    swap = true
+    setTimeout(() => {
+      slot = to
+      swap = false
+    }, 650)
+  }
+
+  $effect(() => {
+    preset
+    if (first) {
+      first = false
+      slot = Math.floor(Math.random() * modes.length)
+      return
+    }
+    untrack(() => change(slot + 1))
+  })
+
+  $effect(() => {
+    if (!every) return
+    const id = setInterval(() => change(slot + 1 + Math.floor(Math.random() * Math.max(1, modes.length - 1))), every * 1000)
+    return () => clearInterval(id)
+  })
 
   const vert = `attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`
   const frag = `precision highp float;
@@ -30,6 +59,45 @@ void main(){
     col=pal(f+z*.08)*(.25+f)*(.6+1.2/(d*3.+.6));
     col+=pal(z*.1+.5)*ring*(.4+bt);
     col*=smoothstep(0.,.25,d+lv*.1);
+  }else if(mode==3){
+    float x=uv.x*1.4;
+    float y=uv.y+.35;
+    col=vec3(0.);
+    for(int i=0;i<3;i++){
+      float fi=float(i);
+      float w=sin(x*(1.4+fi*.6)+t*(.35+fi*.12))*.18+fbm(vec2(x*1.2+fi*3.,t*.15))*.35;
+      float band=exp(-pow((y-w-fi*.12)*(5.-lo*1.5),2.));
+      float rays=.6+.4*fbm(vec2(x*8.+fi,t*.6+y*2.));
+      col+=pal(fi*.33+x*.08+t*.02)*band*rays*(.7+hi*.8+bt*.3);
+    }
+    col+=pal(.6)*.06*(1.-uv.y);
+  }else if(mode==4){
+    float a=atan(uv.y,uv.x),d=length(uv);
+    float nb=64.;
+    float id=floor((a/6.2832+.5)*nb);
+    float sp=fbm(vec2(id*.37,t*1.4))*(.35+lo*.9)+hi*.25*h(vec2(id,floor(t*12.)));
+    float r0=.22+bt*.03;
+    float bar=step(r0,d)*step(d,r0+sp*.45)*step(.18,fract((a/6.2832+.5)*nb));
+    float glow=.006/abs(d-r0)+.0;
+    col=pal(id/nb+t*.03)*bar*1.2+pal(.2)*glow*(.4+lv);
+    col+=pal(id/nb)*.05/(d+.3);
+  }else if(mode==5){
+    vec2 p=uv*3.;
+    float v=sin(p.x+t)+sin(p.y*1.3+t*.8)+sin((p.x+p.y)*.7+t*1.1)+sin(length(p+vec2(sin(t*.3),cos(t*.4))*2.)*1.8-t*1.5);
+    v=v*.25+lo*.4;
+    col=pal(v+t*.04)*(.55+.45*sin(v*6.2832+t))*(.6+lv*.8);
+  }else if(mode==6){
+    col=vec3(0.);
+    for(int i=0;i<4;i++){
+      float fi=float(i);
+      float z=fract(t*(.08+lo*.12)+fi*.25);
+      vec2 g=uv/(z*1.6+.05)*6.+fi*13.;
+      vec2 id=floor(g);vec2 f=fract(g)-.5;
+      float s=h(id+fi);
+      float star=smoothstep(.12*(1.-z)+.02,0.,length(f-(vec2(h(id+3.),h(id+7.))-.5)*.6))*step(.7,s);
+      col+=pal(s+fi*.2)*star*z*(1.2+hi);
+    }
+    col+=pal(.5)*.08/(length(uv)+.5)*(1.+bt);
   }else{
     float d=length(uv);
     float r0=.28+lo*.18+bt*.06;
@@ -45,6 +113,10 @@ void main(){
   float vig=1.-smoothstep(.4,1.25,length(uv*vec2(.9,1.1)));
   gl_FragColor=vec4(col*vig,1.);
 }`
+
+  function curMode() {
+    return mode
+  }
 
   function rgb(hex) {
     const m = /^#?([0-9a-f]{6})$/i.exec(hex || '')
@@ -88,7 +160,9 @@ void main(){
     }
     resize()
     window.addEventListener('resize', resize)
+    let modeNow = 0
     const draw = (now) => {
+      modeNow = curMode()
       const l = levels()
       clock += ((now - last) / 1000) * (0.6 + l.rms * 0.9)
       last = now
@@ -102,7 +176,7 @@ void main(){
       gl.uniform3f(U.c1, ...a)
       gl.uniform3f(U.c2, ...b)
       gl.uniform3f(U.c3, ...c)
-      gl.uniform1i(U.mode, preset % 3)
+      gl.uniform1i(U.mode, modeNow)
       gl.drawArrays(gl.TRIANGLES, 0, 3)
       raf = requestAnimationFrame(draw)
     }
@@ -116,4 +190,4 @@ void main(){
   })
 </script>
 
-<canvas class="viz" bind:this={canvas} aria-hidden="true"></canvas>
+<canvas class="viz" class:swap bind:this={canvas} style={dim ? `filter:brightness(${1 - dim})` : ''} aria-hidden="true"></canvas>

@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod discover;
+pub mod folders;
 mod keys;
 pub mod download;
 pub mod library;
@@ -49,6 +50,8 @@ impl Core {
     pub fn apply_settings(&self) {
         let high = self.lib.setting("stream_quality").map(|q| q != "normal").unwrap_or(true);
         self.player.high_quality.store(high, Ordering::Relaxed);
+        let xf = self.lib.setting("crossfade").and_then(|v| v.parse::<f64>().ok()).unwrap_or(5.0).clamp(0.0, 12.0);
+        self.player.crossfade_ms.store((xf * 1000.0) as u32, Ordering::Relaxed);
         if let Some(v) = self.lib.setting("volume").and_then(|v| v.parse::<f32>().ok()) {
             self.player.volume(v);
         }
@@ -409,8 +412,31 @@ impl Core {
         out.into_iter().map(|t| t.map(|t| self.lib.resolve(vec![t]).remove(0))).collect()
     }
 
-    pub async fn download_as(&self, original: Track, free: Track, on: &(dyn Fn(download::Progress) + Send + Sync)) -> Result<Track> {
-        let got = if free.local_path.is_some() { free } else { self.download(free, None, on).await? };
+    pub async fn format_sizes(&self, urls: Vec<String>) -> Vec<Option<u64>> {
+        futures_util::stream::iter(urls)
+            .map(|u| {
+                let client = self.client.clone();
+                async move {
+                    let head = client.head(&u).timeout(std::time::Duration::from_secs(6)).send().await.ok().filter(|r| r.status().is_success());
+                    if let Some(n) = head.and_then(|r| r.content_length()).filter(|n| *n > 50_000) {
+                        return Some(n);
+                    }
+                    let r = client.get(&u).header("Range", "bytes=0-0").timeout(std::time::Duration::from_secs(6)).send().await.ok()?;
+                    r.headers()
+                        .get("content-range")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.rsplit('/').next())
+                        .and_then(|v| v.parse().ok())
+                        .filter(|n: &u64| *n > 50_000)
+                }
+            })
+            .buffered(12)
+            .collect()
+            .await
+    }
+
+    pub async fn download_as(&self, original: Track, free: Track, kind: Option<String>, on: &(dyn Fn(download::Progress) + Send + Sync)) -> Result<Track> {
+        let got = if free.local_path.is_some() { free } else { self.download(free, kind, on).await? };
         if original.id != got.id {
             if let Some(p) = &got.local_path {
                 self.lib.set_local(&original, p)?;

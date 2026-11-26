@@ -39,7 +39,7 @@
     <header class="hero">
       <Cover src={data.album.cover} size={208} radius={10} />
       <div class="hero-text">
-        <span class="label">Álbum · {sourceName(data.album.source)}</span>
+        <span class="label">{data.album.id?.startsWith('ytpl:') ? 'Playlist' : 'Álbum'}{sourceName(data.album.source) ? ` · ${sourceName(data.album.source)}` : ''}</span>
         <h1 class="hero-title">{data.album.title}</h1>
         <p class="hero-sub">
           <button class="link-artist strong" onclick={() => go('artist', data.album.artist)}>{data.album.artist}</button>

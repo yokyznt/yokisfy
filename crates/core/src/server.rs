@@ -136,6 +136,12 @@ impl Index {
     fn build(lib: &Library) -> Index {
         let mut songs: Vec<Track> = lib.downloads().unwrap_or_default();
         let mut seen: std::collections::HashSet<String> = songs.iter().map(|t| t.id.clone()).collect();
+        let paths: std::collections::HashSet<String> = songs.iter().filter_map(|t| t.local_path.as_ref().map(|p| p.to_lowercase())).collect();
+        for t in crate::folders::tracks() {
+            if t.local_path.as_ref().map(|p| !paths.contains(&p.to_lowercase())).unwrap_or(false) && seen.insert(t.id.clone()) {
+                songs.push(t);
+            }
+        }
         let mut extra = lib.liked().unwrap_or_default();
         for p in lib.playlists().unwrap_or_default() {
             if let Ok(d) = lib.playlist(p.id) {
