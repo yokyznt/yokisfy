@@ -31,6 +31,9 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity) {
         @Volatile
         var channel: Channel? = null
 
+        @Volatile
+        var playing: Boolean = false
+
         fun emit(action: String, position: Double? = null) {
             val o = JSObject()
             o.put("action", action)
@@ -48,6 +51,7 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun update(invoke: Invoke) {
         val a = invoke.parseArgs(UpdateArgs::class.java)
+        playing = a.active && a.playing
         MediaService.push(activity.applicationContext, a)
         invoke.resolve()
     }

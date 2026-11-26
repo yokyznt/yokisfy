@@ -15,6 +15,7 @@ export const ui = $state({
   importing: null,
   scanning: null,
   lyrics: false,
+  update: null,
   searchCache: { q: '', results: null }
 })
 

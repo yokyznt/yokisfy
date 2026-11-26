@@ -22,6 +22,7 @@ export const api = {
   startRadio: (track) => call('start_radio', { track: plain(track) }),
   play: (tracks, start = 0) => call('play', { tracks: plain(tracks), start }),
   toggle: () => call('toggle'),
+  setPlaying: (playing) => invoke('set_playing', { playing }).catch(() => {}),
   next: () => call('next'),
   prev: () => call('prev'),
   seek: (secs) => call('seek', { secs }),
@@ -92,6 +93,7 @@ export async function boot() {
   ui.playlists = pls
   ui.settings = settings
   for (const t of dls) ui.local[t.id] = t.localPath
+  setTimeout(() => import('./update.js').then((m) => m.checkUpdate()), 4000)
 }
 
 export async function refreshPlaylists() {

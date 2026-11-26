@@ -11,6 +11,9 @@
   let lastState = -1
   let lastSent = 0
   let trackId = null
+  let hiddenAt = 0
+  let lastPos = 0
+  let lastVid = null
 
   let active = $derived(!!player.track && player.track.source === 'youtube' && player.external)
   let ids = $derived(active ? (player.track.formats || []).filter((f) => f.kind === 'yt').map((f) => f.url) : [])
@@ -34,6 +37,7 @@
 
   function load(id) {
     loadedId = id
+    lastPos = 0
     lastState = -1
     cmd(player.playing ? 'loadVideoById' : 'cueVideoById', [{ videoId: id, startSeconds: 0 }])
     cmd('setVolume', [Math.round(player.volume * 100)])
@@ -66,8 +70,19 @@
   })
 
   $effect(() => {
+    const vis = () => {
+      if (document.visibilityState === 'hidden') hiddenAt = performance.now()
+      else if (active && player.playing) cmd('playVideo')
+    }
+    document.addEventListener('visibilitychange', vis)
+    return () => document.removeEventListener('visibilitychange', vis)
+  })
+
+  $effect(() => {
     const un = listen('ext-seek', (e) => {
-      if (active) cmd('seekTo', [e.payload, true])
+      if (!active) return
+      lastPos = e.payload
+      cmd('seekTo', [e.payload, true])
     })
     return () => un.then((f) => f())
   })
@@ -100,8 +115,15 @@
     if (typeof i.playerState === 'number' && i.playerState !== lastState) {
       lastState = i.playerState
       if (i.playerState === 0) api.extEnded()
+      else if (i.playerState === 2 && player.playing) {
+        if (performance.now() - hiddenAt < 4000) setTimeout(() => active && player.playing && cmd('playVideo'), 300)
+        else api.setPlaying(false)
+      } else if (i.playerState === 1 && !player.playing) api.setPlaying(true)
     }
     if (typeof i.currentTime === 'number') {
+      if (i.currentTime < 0.5 && lastPos > 2 && loadedId === lastVid) return
+      lastPos = i.currentTime
+      lastVid = loadedId
       const now = performance.now()
       if (now - lastSent > 900) {
         lastSent = now

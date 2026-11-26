@@ -1,4 +1,6 @@
 <script>
+  import { getVersion } from '@tauri-apps/api/app'
+  import { checkUpdate } from '../lib/update.js'
   import Icon from '../components/Icon.svelte'
   import { api } from '../lib/api.js'
   import { ui, setTheme, toast } from '../lib/state.svelte.js'
@@ -50,6 +52,8 @@
     navigator.clipboard.writeText(v)
     toast('Copiado')
   }
+  let version = $state('')
+  getVersion().then((v) => (version = v))
 </script>
 
 <div class="page narrow">
@@ -140,7 +144,10 @@
 
   <section class="set">
     <h2 class="label">Acerca de</h2>
-    <p class="about">Yokisfy 0.1.0 · software libre GPL-3.0. Solo usa música con licencia libre o con permiso del artista: Jamendo (Creative Commons), Internet Archive (netlabels y Live Music Archive). Cada descarga guarda su licencia dentro del archivo.</p>
-    <button class="link" onclick={() => openUrl('https://github.com/yokyznt/yokisfy')}>github.com/yokyznt/yokisfy</button>
+    <p class="about">Yokisfy {version} · software libre GPL-3.0. Descarga solo música con licencia libre o con permiso del artista (Jamendo, Audius, Internet Archive); lo demás se escucha desde YouTube Music sin descargarse. Cada descarga guarda su licencia dentro del archivo.</p>
+    <div class="dir">
+      <button class="btn ghost" onclick={() => checkUpdate(true)}>Buscar actualizaciones</button>
+      <button class="link" onclick={() => openUrl('https://github.com/yokyznt/yokisfy/releases/latest')}>Página de descargas</button>
+    </div>
   </section>
 </div>

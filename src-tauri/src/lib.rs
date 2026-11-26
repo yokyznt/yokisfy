@@ -204,6 +204,29 @@ async fn download_as(app: AppHandle, core: C<'_>, original: Track, free: Track) 
 }
 
 #[tauri::command]
+async fn latest_release(app: AppHandle, core: C<'_>) -> R<Option<serde_json::Value>> {
+    let v: serde_json::Value = core
+        .client
+        .get("https://api.github.com/repos/yokyznt/yokisfy/releases/latest")
+        .header("User-Agent", "Yokisfy")
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(yokisfy_core::Error::from)?
+        .json()
+        .await
+        .map_err(yokisfy_core::Error::from)?;
+    let Some(tag) = v["tag_name"].as_str() else { return Ok(None) };
+    let latest = tag.trim_start_matches('v').to_string();
+    let parse = |s: &str| s.split('.').map(|p| p.parse::<u32>().unwrap_or(0)).collect::<Vec<_>>();
+    if parse(&latest) <= parse(&app.package_info().version.to_string()) {
+        return Ok(None);
+    }
+    let apk = v["assets"].as_array().into_iter().flatten().find(|a| a["name"].as_str().map(|n| n.ends_with(".apk") && !n.contains("x86")).unwrap_or(false)).and_then(|a| a["browser_download_url"].as_str()).map(String::from);
+    Ok(Some(json!({ "version": latest, "notes": v["body"], "apk": apk, "page": v["html_url"] })))
+}
+
+#[tauri::command]
 async fn artist(core: C<'_>, id: String) -> R<yokisfy_core::sources::ytmusic::ArtistDetail> {
     core.artist(&id).await
 }
@@ -319,7 +342,10 @@ fn push_media(h: &AppHandle, s: &yokisfy_core::player::Status) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_yk_media::init())
@@ -413,7 +439,7 @@ pub fn run() {
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, artist, lyrics, free_versions, download_as, ext_progress, ext_ended, ext_failed
+            import_spotify, artist, latest_release, lyrics, free_versions, download_as, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");
