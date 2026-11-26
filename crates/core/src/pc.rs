@@ -12,6 +12,8 @@ pub struct PcServer {
     pub url: String,
     pub user: String,
     pub password: String,
+    #[serde(default)]
+    pub party: bool,
 }
 
 pub fn discover(wait: Duration) -> Vec<PcServer> {
@@ -49,6 +51,7 @@ fn parse(b: &[u8], from: SocketAddr) -> Option<PcServer> {
         url: format!("http://{}:{}", from.ip(), v["port"].as_u64().unwrap_or(45130)),
         user: v["user"].as_str().unwrap_or(USER).to_string(),
         password: v["password"].as_str().unwrap_or_default().to_string(),
+        party: v["party"].as_bool().unwrap_or(false),
     })
 }
 
@@ -98,4 +101,15 @@ pub async fn library(client: &Client, s: &PcServer) -> Result<Vec<Track>> {
             })
         })
         .collect())
+}
+
+pub async fn call(client: &Client, s: &PcServer, action: &str, body: &Value) -> Result<Value> {
+    let r = client
+        .post(format!("{}/yk/{action}?p={}", s.url, urlencoding::encode(&s.password)))
+        .body(body.to_string())
+        .timeout(Duration::from_secs(if action == "party_search" { 25 } else { 8 }))
+        .send()
+        .await?
+        .error_for_status()?;
+    Ok(r.json().await?)
 }

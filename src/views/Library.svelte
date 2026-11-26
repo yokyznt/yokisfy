@@ -29,7 +29,22 @@
     </button>
     <button class="lrow" onclick={() => go('pc')}>
       <span class="lrow-art"><Icon name="disc" size={22} /></span>
-      <span class="lrow-text"><span class="lrow-name">En mi PC</span><span class="lrow-meta">Lo que descargaste en tu computadora, por Wi-Fi</span></span>
+      <span class="lrow-text"><span class="lrow-name">En mi PC</span><span class="lrow-meta">Control remoto, sincronizar y bajar tu música</span></span>
+      <Icon name="back" size={16} />
+    </button>
+    <button class="lrow" onclick={() => go('stats')}>
+      <span class="lrow-art"><Icon name="stats" size={22} /></span>
+      <span class="lrow-text"><span class="lrow-name">Tus estadísticas</span><span class="lrow-meta">Tus artistas y canciones top, horas escuchadas</span></span>
+      <Icon name="back" size={16} />
+    </button>
+    <button class="lrow" onclick={() => go('party')}>
+      <span class="lrow-art"><Icon name="party" size={22} /></span>
+      <span class="lrow-text"><span class="lrow-name">Fiesta</span><span class="lrow-meta">Que tus amigos agreguen canciones a la cola</span></span>
+      <Icon name="back" size={16} />
+    </button>
+    <button class="lrow" onclick={() => (ui.eqOpen = true)}>
+      <span class="lrow-art"><Icon name="eq" size={22} /></span>
+      <span class="lrow-text"><span class="lrow-name">Ecualizador</span><span class="lrow-meta">Graves, agudos, volumen extra y karaoke</span></span>
       <Icon name="back" size={16} />
     </button>
     <button class="lrow" onclick={() => go('recent')}>

@@ -226,6 +226,108 @@ async fn new_window(app: AppHandle) {
     let _ = app;
 }
 
+#[cfg(desktop)]
+fn hotkeys(app: &tauri::App) {
+    use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+    let ca = Some(Modifiers::CONTROL | Modifiers::ALT);
+    let keys = [
+        (Shortcut::new(ca, Code::Space), "toggle"),
+        (Shortcut::new(ca, Code::ArrowRight), "next"),
+        (Shortcut::new(ca, Code::ArrowLeft), "prev"),
+        (Shortcut::new(ca, Code::ArrowUp), "up"),
+        (Shortcut::new(ca, Code::ArrowDown), "down"),
+        (Shortcut::new(None, Code::MediaPlayPause), "toggle"),
+        (Shortcut::new(None, Code::MediaTrackNext), "next"),
+        (Shortcut::new(None, Code::MediaTrackPrevious), "prev"),
+    ];
+    let map: Vec<(u32, &'static str)> = keys.iter().map(|(s, a)| (s.id(), *a)).collect();
+    let _ = app.handle().plugin(
+        tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(move |app, sc, ev| {
+                if ev.state() != ShortcutState::Pressed {
+                    return;
+                }
+                let core = app.state::<Arc<Core>>();
+                if core.lib.setting("hotkeys").as_deref() == Some("off") {
+                    return;
+                }
+                let Some((_, a)) = map.iter().find(|(id, _)| *id == sc.id()) else { return };
+                let vol = LAST_STATUS.lock().ok().and_then(|g| g.as_ref().and_then(|s| s.get("volume").and_then(|v| v.as_f64()))).unwrap_or(0.8);
+                match *a {
+                    "toggle" => core.player.toggle(),
+                    "next" => core.player.next(),
+                    "prev" => core.player.prev(),
+                    "up" | "down" => {
+                        let v = (vol + if *a == "up" { 0.05 } else { -0.05 }).clamp(0.0, 1.0);
+                        core.player.volume(v as f32);
+                        let _ = core.lib.set_setting("volume", &v.to_string());
+                    }
+                    _ => {}
+                }
+            })
+            .build(),
+    );
+    let gs = app.global_shortcut();
+    for (s, _) in keys {
+        let _ = gs.register(s);
+    }
+}
+
+#[tauri::command]
+fn stats(core: C<'_>, days: i64, offset: i64) -> serde_json::Value {
+    core.stats(days, offset)
+}
+
+#[tauri::command]
+async fn pc_call(core: C<'_>, action: String, body: Option<serde_json::Value>) -> R<serde_json::Value> {
+    core.pc_call(&action, body.unwrap_or_default()).await
+}
+
+#[tauri::command]
+async fn pc_sync(core: C<'_>) -> R<serde_json::Value> {
+    core.pc_sync().await
+}
+
+#[tauri::command]
+async fn party_hosts(core: C<'_>) -> R<Vec<yokisfy_core::pc::PcServer>> {
+    Ok(core.party_hosts().await)
+}
+
+#[tauri::command]
+async fn party_call(core: C<'_>, url: String, action: String, body: Option<serde_json::Value>) -> R<serde_json::Value> {
+    core.party_call(&url, &action, body.unwrap_or_default()).await
+}
+
+#[tauri::command]
+async fn open_mini(app: AppHandle) {
+    #[cfg(desktop)]
+    {
+        if let Some(w) = app.get_webview_window("mini") {
+            let _ = w.show();
+            let _ = w.set_focus();
+            return;
+        }
+        let mut b = WebviewWindowBuilder::new(&app, "mini", WebviewUrl::App("index.html?mini=1".into()))
+            .title("Yokisfy mini")
+            .inner_size(360.0, 128.0)
+            .min_inner_size(300.0, 110.0)
+            .decorations(false)
+            .shadow(true)
+            .always_on_top(true)
+            .resizable(true)
+            .skip_taskbar(false);
+        if let Ok(Some(m)) = app.primary_monitor() {
+            let s = m.scale_factor();
+            let sz = m.size().to_logical::<f64>(s);
+            let p = m.position().to_logical::<f64>(s);
+            b = b.position(p.x + sz.width - 380.0, p.y + sz.height - 190.0);
+        }
+        let _ = b.build();
+    }
+    #[cfg(mobile)]
+    let _ = app;
+}
+
 #[tauri::command]
 async fn format_sizes(core: C<'_>, urls: Vec<String>) -> R<Vec<Option<u64>>> {
     Ok(core.format_sizes(urls).await)
@@ -332,13 +434,99 @@ fn settings(core: C<'_>) -> R<serde_json::Value> {
 }
 
 #[tauri::command]
-async fn set_setting(core: C<'_>, srv: State<'_, Srv>, key: String, value: String) -> R<()> {
+async fn set_setting(app: AppHandle, core: C<'_>, key: String, value: String) -> R<()> {
     core.lib.set_setting(&key, &value)?;
     core.apply_settings();
     if key == "share_library" {
-        apply_server(&core, &srv).await;
+        apply_server(&app).await;
+    }
+    if key == "party" {
+        server::PARTY.store(value == "on", std::sync::atomic::Ordering::Relaxed);
+        if value == "on" {
+            apply_server(&app).await;
+        }
     }
     Ok(())
+}
+
+fn remote(app: AppHandle) -> server::Remote {
+    Arc::new(move |action: String, arg: serde_json::Value| {
+        let app = app.clone();
+        Box::pin(async move {
+            let core = app.state::<Arc<Core>>().inner().clone();
+            let status = LAST_STATUS.lock().ok().and_then(|g| g.clone());
+            let s = |k: &str| arg.get(k).and_then(|v| v.as_str()).map(String::from).unwrap_or_default();
+            match action.as_str() {
+                "now" => json!({ "player": status, "queue": LAST_QUEUE.lock().ok().and_then(|g| g.clone()) }),
+                "cmd" => {
+                    let v = arg.get("v").and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))).unwrap_or(0.0);
+                    match s("c").as_str() {
+                        "toggle" => core.player.toggle(),
+                        "play" => core.player.set_playing(true),
+                        "pause" => core.player.set_playing(false),
+                        "next" => core.player.next(),
+                        "prev" => core.player.prev(),
+                        "seek" => core.player.seek(v),
+                        "volume" => {
+                            core.player.volume(v as f32);
+                            let _ = core.lib.set_setting("volume", &v.to_string());
+                        }
+                        "jump" => core.player.jump(v as usize),
+                        _ => return json!({ "ok": false }),
+                    }
+                    let _ = app.emit("remote", s("c"));
+                    json!({ "ok": true })
+                }
+                "state" => {
+                    let lists: Vec<serde_json::Value> = core
+                        .lib
+                        .playlists()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter_map(|p| core.lib.playlist(p.id).ok())
+                        .map(|d| json!({ "name": d.playlist.name, "tracks": d.tracks }))
+                        .collect();
+                    json!({ "liked": core.lib.liked().unwrap_or_default(), "playlists": lists })
+                }
+                "merge" => {
+                    let liked: Vec<Track> = serde_json::from_value(arg.get("liked").cloned().unwrap_or_default()).unwrap_or_default();
+                    let lists: Vec<(String, Vec<Track>)> = arg
+                        .get("playlists")
+                        .and_then(|v| v.as_array())
+                        .map(|a| a.iter().filter_map(|p| Some((p.get("name")?.as_str()?.to_string(), serde_json::from_value(p.get("tracks")?.clone()).ok()?))).collect())
+                        .unwrap_or_default();
+                    let n = core.lib.merge_sync(&liked, &lists).unwrap_or(0);
+                    if n > 0 {
+                        let _ = app.emit("synced", n);
+                    }
+                    json!({ "added": n })
+                }
+                "party_now" => {
+                    let on = server::PARTY.load(std::sync::atomic::Ordering::Relaxed);
+                    json!({ "on": on, "name": server::host_name(), "track": status.as_ref().and_then(|s| s.get("track").cloned()) })
+                }
+                "party_search" => {
+                    let r = core.search(&s("q")).await;
+                    let t: Vec<Track> = r.tracks.into_iter().filter(|t| !t.live).take(25).collect();
+                    json!({ "tracks": t })
+                }
+                "party_add" => {
+                    let Some(t) = arg.get("track").cloned().and_then(|v| serde_json::from_value::<Track>(v).ok()) else { return json!({ "ok": false }) };
+                    let from = s("from");
+                    let from = if from.trim().is_empty() { "Alguien".to_string() } else { from.chars().take(24).collect() };
+                    let idle = status.as_ref().and_then(|s| s.get("track")).map(|t| t.is_null()).unwrap_or(true);
+                    if idle {
+                        core.play(vec![t.clone()], 0);
+                    } else {
+                        core.player.enqueue(core.lib.resolve(vec![t.clone()]));
+                    }
+                    let _ = app.emit("party-add", json!({ "from": from, "title": t.title, "artist": t.artist }));
+                    json!({ "ok": true })
+                }
+                _ => json!({ "error": "acción desconocida" }),
+            }
+        }) as futures_util::future::BoxFuture<'static, serde_json::Value>
+    })
 }
 
 type Srv = tokio::sync::Mutex<Option<server::ServerHandle>>;
@@ -355,15 +543,18 @@ fn server_password(core: &Core) -> String {
     }
 }
 
-async fn apply_server(core: &Core, srv: &Srv) {
-    let want = cfg!(desktop) && core.lib.setting("share_library").as_deref() != Some("off");
+async fn apply_server(app: &AppHandle) {
+    let core = app.state::<Arc<Core>>().inner().clone();
+    let srv = app.state::<Srv>();
+    server::PARTY.store(core.lib.setting("party").as_deref() == Some("on"), std::sync::atomic::Ordering::Relaxed);
+    let want = cfg!(desktop) && (core.lib.setting("share_library").as_deref() != Some("off") || core.lib.setting("party").as_deref() == Some("on"));
     let mut g = srv.lock().await;
     if !want {
         *g = None;
         return;
     }
     if g.is_none() {
-        *g = server::start(core.lib.clone(), server_password(core)).await.ok();
+        *g = server::start(core.lib.clone(), server_password(&core), Some(remote(app.clone()))).await.ok();
     }
 }
 
@@ -406,11 +597,15 @@ fn push_media(h: &AppHandle, s: &yokisfy_core::player::Status) {
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(desktop)]
-    let builder = builder
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    let builder = if std::env::var("YOKISFY_DEV_POS").is_ok() {
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             let app = app.clone();
             tauri::async_runtime::spawn(async move { open_window(&app) });
         }))
+    };
+    let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .on_window_event(|w, ev| match ev {
             tauri::WindowEvent::CloseRequested { api, .. } if w.label() == "main" => {
@@ -507,9 +702,11 @@ pub fn run() {
             app.manage(Srv::default());
             let h3 = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                let srv = h3.state::<Srv>();
-                apply_server(&core, &srv).await;
+                let _ = &core;
+                apply_server(&h3).await;
             });
+            #[cfg(desktop)]
+            hotkeys(app);
             #[cfg(desktop)]
             {
                 let mut w = window_builder(app.handle(), "main");
@@ -532,7 +729,7 @@ pub fn run() {
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, format_sizes, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, snapshot, new_window, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
+            import_spotify, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fiesta · Yokisfy</title>
+<style>
+:root{color-scheme:dark;--bg:#000;--tx:#fff;--tx2:#9a9a9f;--line:#222}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,sans-serif}
+header{position:sticky;top:0;background:#000d;backdrop-filter:blur(12px);padding:18px 16px 12px;border-bottom:1px solid var(--line)}
+h1{margin:0 0 4px;font-size:22px;letter-spacing:-.03em;display:flex;gap:10px;align-items:center}
+h1 svg{width:30px;height:30px}
+p.sub{margin:0 0 12px;color:var(--tx2);font-size:14px}
+.now{display:flex;gap:12px;align-items:center;margin:0 0 12px}
+.now img{width:48px;height:48px;border-radius:8px;object-fit:cover;background:#111}
+.now b{display:block}
+.now span{color:var(--tx2);font-size:13px}
+input{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:#0d0d0f;color:var(--tx);font:inherit}
+input:focus{outline:2px solid #fff}
+ul{list-style:none;margin:0;padding:8px 8px 40px}
+li{display:flex;gap:12px;align-items:center;padding:8px;border-radius:12px}
+li img{width:46px;height:46px;border-radius:8px;object-fit:cover;background:#111;flex:none}
+li div{flex:1;min-width:0}
+li b,li span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+li span{color:var(--tx2);font-size:13px}
+button{border:0;border-radius:999px;padding:9px 14px;background:#fff;color:#000;font:600 14px system-ui;cursor:pointer;flex:none}
+button:disabled{background:#333;color:#aaa}
+.name{display:flex;gap:8px;margin-bottom:10px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#fff;color:#000;padding:10px 16px;border-radius:999px;font-weight:600;opacity:0;transition:opacity .3s}
+.toast.on{opacity:1}
+.off{padding:40px 20px;text-align:center;color:var(--tx2)}
+</style>
+</head>
+<body>
+<header>
+  <h1><svg viewBox="0 0 64 64"><path d="M8 36h8l4-9 6 18 6-26 5 17h18M49 30v14" fill="none" stroke="#fff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Fiesta</h1>
+  <p class="sub" id="host">Agrega canciones a la música que está sonando.</p>
+  <div class="now" id="now" hidden><img id="nowImg" alt=""><div><b id="nowT"></b><span id="nowA"></span></div></div>
+  <div class="name"><input id="who" placeholder="Tu nombre" maxlength="24" autocomplete="name"></div>
+  <input id="q" type="search" placeholder="Busca una canción" autocomplete="off">
+</header>
+<ul id="list"></ul>
+<div class="toast" id="toast"></div>
+<script>
+const $ = (id) => document.getElementById(id)
+const who = $('who')
+who.value = localStorage.getItem('yk-who') || ''
+who.oninput = () => localStorage.setItem('yk-who', who.value)
+const call = (a, body) => fetch('/yk/' + a, body ? { method: 'POST', body: JSON.stringify(body) } : {}).then((r) => r.json())
+function toast(t) { const e = $('toast'); e.textContent = t; e.classList.add('on'); setTimeout(() => e.classList.remove('on'), 2200) }
+async function now() {
+  try {
+    const n = await call('party_now')
+    if (!n.on) { $('list').innerHTML = '<li class="off">La fiesta está cerrada. Pídele al anfitrión que la abra en Yokisfy.</li>'; return }
+    $('host').textContent = `Estás en la fiesta de ${n.name}. Agrega canciones a la cola.`
+    if (n.track) { $('now').hidden = false; $('nowImg').src = n.track.cover || ''; $('nowT').textContent = n.track.title; $('nowA').textContent = n.track.artist }
+  } catch {}
+}
+let timer
+$('q').oninput = () => { clearTimeout(timer); timer = setTimeout(search, 350) }
+async function search() {
+  const q = $('q').value.trim()
+  if (!q) return ($('list').innerHTML = '')
+  const r = await call('party_search', { q })
+  const ul = $('list')
+  ul.innerHTML = ''
+  for (const t of r.tracks || []) {
+    const li = document.createElement('li')
+    li.innerHTML = `<img alt="" src="${t.cover || ''}"><div><b></b><span></span></div><button>Agregar</button>`
+    li.querySelector('b').textContent = t.title
+    li.querySelector('span').textContent = t.artist
+    li.querySelector('button').onclick = async (e) => {
+      e.target.disabled = true
+      const res = await call('party_add', { track: t, from: who.value.trim() || 'Alguien' })
+      e.target.textContent = res.ok ? 'En la cola' : 'No se pudo'
+      if (res.ok) toast(`Agregada: ${t.title}`)
+    }
+    ul.appendChild(li)
+  }
+}
+now(); setInterval(now, 8000)
+</script>
+</body>
+</html>

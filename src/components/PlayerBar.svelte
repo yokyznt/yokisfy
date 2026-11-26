@@ -128,6 +128,8 @@
       {#if !t.live}<button class="icon-btn sm" class:active={ui.lyrics && ui.fullPlayer} onclick={() => { ui.lyrics = true; ui.fpMode = 'lyrics'; ui.fullPlayer = true }} aria-label="Letra" title="Letra"><Icon name="lyrics" size={18} /></button>{/if}
       <button class="icon-btn sm" onclick={(e) => trackMenu(e, t)} aria-label="Más opciones"><Icon name="more" size={17} /></button>
     {/if}
+    <button class="icon-btn sm" class:active={ui.eqOpen} onclick={() => (ui.eqOpen = !ui.eqOpen)} aria-label="Ecualizador" title="Ecualizador"><Icon name="eq" size={18} /></button>
+    {#if !ui.settings.mobile}<button class="icon-btn sm" onclick={() => api.openMini()} aria-label="Mini reproductor" title="Mini reproductor (siempre encima)"><Icon name="mini" size={18} /></button>{/if}
     <button class="icon-btn sm" class:active={ui.queueOpen} onclick={() => (ui.queueOpen = !ui.queueOpen)} aria-label="Cola" title="Cola"><Icon name="queue" size={18} /></button>
     <button class="icon-btn sm" onclick={mute} aria-label={vol > 0 ? 'Silenciar' : 'Activar sonido'}><Icon name={vol > 0 ? 'volume' : 'mute'} size={18} /></button>
     <input type="range" class="range vol" min="0" max="1" step="0.01" value={vol} style={`--p:${vol * 100}%`} oninput={volInput} onchange={volCommit} aria-label="Volumen" />

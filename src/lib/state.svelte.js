@@ -18,6 +18,7 @@ export const ui = $state({
   fpMode: 'cover',
   fpIdle: false,
   quality: null,
+  eqOpen: false,
   update: null,
   sleep: null,
   searchCache: { q: '', results: null }
@@ -107,7 +108,7 @@ export function totalTime(tracks) {
 }
 
 export function sourceName(s) {
-  return { jamendo: 'Jamendo', archive: 'Internet Archive', audius: 'Audius', radio: 'Radio', local: 'Local', youtube: '' }[s] ?? s
+  return { jamendo: 'Jamendo', archive: 'Internet Archive', audius: 'Audius', radio: 'Radio', local: 'Local', youtube: '', mix: 'Para ti' }[s] ?? s
 }
 
 export function bestLabel(t) {

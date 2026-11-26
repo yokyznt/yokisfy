@@ -17,11 +17,16 @@
   import Downloads from './views/Downloads.svelte'
   import Settings from './views/Settings.svelte'
   import Pc from './views/Pc.svelte'
+  import Stats from './views/Stats.svelte'
+  import Party from './views/Party.svelte'
+  import Equalizer from './components/Equalizer.svelte'
+  import MiniPlayer from './components/MiniPlayer.svelte'
   import { boot, api } from './lib/api.js'
   import { ui, player, go, root, back, setTheme } from './lib/state.svelte.js'
   import { newPlaylist, importSpotify } from './lib/actions.js'
 
   let ready = $state(false)
+  const isMini = new URLSearchParams(location.search).has('mini')
   const isMainWin = (() => {
     try {
       return (window.__TAURI_INTERNALS__?.metadata?.currentWindow?.label || 'main') === 'main'
@@ -44,7 +49,7 @@
 
   function isRoot(name) {
     const v = ui.view.name
-    if (name === 'library') return ['library', 'liked', 'recent', 'playlist'].includes(v)
+    if (name === 'library') return ['library', 'liked', 'recent', 'playlist', 'stats', 'party', 'pc'].includes(v)
     return v === name
   }
 
@@ -68,12 +73,14 @@
 </script>
 
 <svelte:window onkeydown={onKey} />
+{#if isMini}
+  {#if ready}<MiniPlayer />{/if}
+{:else}
 
 <div class="app" class:queue-open={ui.queueOpen}>
   <aside class="side">
     <button class="brand" onclick={() => root('home')} aria-label="Yokisfy, inicio">
-      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
-        <rect x="2" y="2" width="60" height="60" rx="18" fill="currentColor" />
+      <svg class="logo" viewBox="5 15 54 34" aria-hidden="true">
         <path class="lb" d="M8 36h8l4-9 6 18 6-26 5 17h18M49 30v14" />
       </svg>
       <span>yokisfy</span>
@@ -130,6 +137,8 @@
           {:else if ui.view.name === 'downloads'}<Downloads />
           {:else if ui.view.name === 'settings'}<Settings />
           {:else if ui.view.name === 'pc'}<Pc />
+          {:else if ui.view.name === 'stats'}<Stats />
+          {:else if ui.view.name === 'party'}<Party />
           {/if}
         </div>
       {/key}
@@ -154,3 +163,5 @@
 <Overlays />
 {#if isMainWin}<YtPlayer />{/if}
 {#if ready && !ui.settings.mobile}<WinControls />{/if}
+<Equalizer />
+{/if}

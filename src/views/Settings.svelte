@@ -95,6 +95,21 @@
 
   {#if !ui.settings.mobile}
   <section class="set">
+    <h2 class="label">Atajos de teclado</h2>
+    <div class="set-row">
+      <span class="set-name">Controlar la música desde cualquier programa o juego</span>
+      <button class="switch" role="switch" aria-checked={ui.settings.hotkeys !== 'off'} aria-label="Atajos globales" onclick={() => save('hotkeys', ui.settings.hotkeys === 'off' ? 'on' : 'off')}><i></i></button>
+    </div>
+    <ul class="keys">
+      <li><span><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Espacio</kbd></span>Pausar / reproducir</li>
+      <li><span><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>→</kbd></span>Siguiente</li>
+      <li><span><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>←</kbd></span>Anterior</li>
+      <li><span><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></span>Subir / bajar volumen</li>
+      <li><span>Teclas multimedia</span>Funcionan aunque la app esté minimizada</li>
+    </ul>
+  </section>
+
+  <section class="set">
     <h2 class="label">Escuchar en el celular</h2>
     <div class="set-row">
       <span class="set-name">Compartir mis descargas y la carpeta Música con el celular</span>

@@ -1,6 +1,8 @@
 pub mod audio;
 pub mod discover;
+pub mod dsp;
 pub mod folders;
+pub mod foryou;
 mod keys;
 pub mod download;
 pub mod library;
@@ -50,6 +52,7 @@ impl Core {
     pub fn apply_settings(&self) {
         let high = self.lib.setting("stream_quality").map(|q| q != "normal").unwrap_or(true);
         self.player.high_quality.store(high, Ordering::Relaxed);
+        crate::dsp::set(self.lib.setting("eq").and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default());
         let xf = self.lib.setting("crossfade").and_then(|v| v.parse::<f64>().ok()).unwrap_or(5.0).clamp(0.0, 12.0);
         self.player.crossfade_ms.store((xf * 1000.0) as u32, Ordering::Relaxed);
         if let Some(v) = self.lib.setting("volume").and_then(|v| v.parse::<f32>().ok()) {
@@ -162,6 +165,8 @@ impl Core {
             audius::album(&self.client, au).await?
         } else if let Some(yt) = id.strip_prefix("ytm:") {
             ytmusic::album(&self.client, yt).await?
+        } else if let Some(k) = id.strip_prefix("mix:") {
+            return self.mix(k).await;
         } else if let Some(pl) = id.strip_prefix("ytpl:") {
             ytmusic::playlist_album(&self.client, pl).await?
         } else {
@@ -196,6 +201,10 @@ impl Core {
         );
         let mut s = Vec::new();
         let sec = |title: &str, albums: Vec<Album>, tracks: Vec<Track>| Section { title: title.into(), albums, tracks, artists: vec![] };
+        let mx = self.mixes().await;
+        if !mx.is_empty() {
+            s.push(sec("Hecho para ti", mx, vec![]));
+        }
         if let Ok(h) = yh {
             if !h.trending.is_empty() {
                 s.push(sec("Lo más escuchado ahora", vec![], self.lib.resolve(h.trending)));
@@ -258,6 +267,58 @@ impl Core {
             }
         }
         Err(last)
+    }
+
+    pub async fn pc_find(&self) -> Result<pc::PcServer> {
+        let saved: Option<pc::PcServer> = self.lib.setting("pc_server").and_then(|s| serde_json::from_str(&s).ok());
+        if let Some(s) = &saved {
+            if pc::call(&self.client, s, "now", &serde_json::Value::Null).await.is_ok() {
+                return Ok(s.clone());
+            }
+        }
+        let found = tokio::task::spawn_blocking(|| pc::discover(std::time::Duration::from_millis(1800))).await.unwrap_or_default();
+        for s in found {
+            if pc::call(&self.client, &s, "now", &serde_json::Value::Null).await.is_ok() {
+                let _ = self.lib.set_setting("pc_server", &serde_json::to_string(&s)?);
+                return Ok(s);
+            }
+        }
+        Err(Error::Msg("No encontré tu PC. Abre Yokisfy en la PC y conecta el celular al mismo Wi-Fi.".into()))
+    }
+
+    pub async fn pc_call(&self, action: &str, body: serde_json::Value) -> Result<serde_json::Value> {
+        let s = self.pc_find().await?;
+        pc::call(&self.client, &s, action, &body).await
+    }
+
+    pub async fn pc_sync(&self) -> Result<serde_json::Value> {
+        let s = self.pc_find().await?;
+        let remote = pc::call(&self.client, &s, "state", &serde_json::Value::Null).await?;
+        let liked: Vec<Track> = serde_json::from_value(remote["liked"].clone()).unwrap_or_default();
+        let lists: Vec<(String, Vec<Track>)> = remote["playlists"]
+            .as_array()
+            .map(|a| a.iter().filter_map(|p| Some((p["name"].as_str()?.to_string(), serde_json::from_value(p["tracks"].clone()).ok()?))).collect())
+            .unwrap_or_default();
+        let got = self.lib.merge_sync(&liked, &lists)?;
+        let mine: Vec<serde_json::Value> = self
+            .lib
+            .playlists()?
+            .into_iter()
+            .filter_map(|p| self.lib.playlist(p.id).ok())
+            .map(|d| serde_json::json!({ "name": d.playlist.name, "tracks": d.tracks }))
+            .collect();
+        let sent = pc::call(&self.client, &s, "merge", &serde_json::json!({ "liked": self.lib.liked()?, "playlists": mine })).await?;
+        Ok(serde_json::json!({ "name": s.name, "received": got, "sent": sent["added"].as_u64().unwrap_or(0) }))
+    }
+
+    pub async fn party_hosts(&self) -> Vec<pc::PcServer> {
+        let mut seen = std::collections::HashSet::new();
+        tokio::task::spawn_blocking(|| pc::discover(std::time::Duration::from_millis(1500))).await.unwrap_or_default().into_iter().filter(|s| s.party && seen.insert(s.url.clone())).collect()
+    }
+
+    pub async fn party_call(&self, url: &str, action: &str, body: serde_json::Value) -> Result<serde_json::Value> {
+        let s = pc::PcServer { name: String::new(), url: url.to_string(), user: String::new(), password: String::new(), party: true };
+        pc::call(&self.client, &s, action, &body).await
     }
 
     pub async fn radio_for(&self, seed: &Track, exclude: &[String]) -> Vec<Track> {

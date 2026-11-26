@@ -21,10 +21,15 @@ pub const DISCOVERY_PORT: u16 = 45131;
 pub const USER: &str = "yokisfy";
 const API_VERSION: &str = "1.16.1";
 
+pub type Remote = Arc<dyn Fn(String, Value) -> futures_util::future::BoxFuture<'static, Value> + Send + Sync>;
+
+pub static PARTY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 struct Ctx {
     lib: Arc<Library>,
     password: String,
     name: String,
+    remote: Option<Remote>,
 }
 
 pub struct ServerHandle {
@@ -52,9 +57,14 @@ pub fn host_name() -> String {
     std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_else(|_| "PC".into())
 }
 
-pub async fn start(lib: Arc<Library>, password: String) -> Result<ServerHandle> {
-    let ctx = Arc::new(Ctx { lib, password: password.clone(), name: host_name() });
-    let app = Router::new().route("/rest/{method}", any(handle)).route("/", any(|| async { "Yokisfy" })).with_state(ctx.clone());
+pub async fn start(lib: Arc<Library>, password: String, remote: Option<Remote>) -> Result<ServerHandle> {
+    let ctx = Arc::new(Ctx { lib, password: password.clone(), name: host_name(), remote });
+    let app = Router::new()
+        .route("/rest/{method}", any(handle))
+        .route("/yk/{action}", any(yk))
+        .route("/fiesta", any(|| async { axum::response::Html(include_str!("fiesta.html")) }))
+        .route("/", any(|| async { Redirect::temporary("/fiesta") }))
+        .with_state(ctx.clone());
     let listener = match tokio::net::TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], PORT))).await {
         Ok(l) => l,
         Err(_) => tokio::net::TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], 0))).await?,
@@ -80,7 +90,7 @@ fn discovery(port: u16, password: String, name: String, stop: Arc<std::sync::ato
     while !stop.load(std::sync::atomic::Ordering::Relaxed) {
         if let Ok((n, from)) = sock.recv_from(&mut buf) {
             if buf[..n].starts_with(b"YOKISFY?") {
-                let msg = json!({ "app": "yokisfy", "name": name, "port": port, "user": USER, "password": password, "version": env!("CARGO_PKG_VERSION") });
+                let msg = json!({ "app": "yokisfy", "name": name, "port": port, "user": USER, "password": password, "version": env!("CARGO_PKG_VERSION"), "party": PARTY.load(std::sync::atomic::Ordering::Relaxed) });
                 let _ = sock.send_to(msg.to_string().as_bytes(), from);
             }
         }
@@ -293,6 +303,21 @@ fn respond(q: &HashMap<String, String>, body: Value) -> Response {
     let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
     to_xml("subsonic-response", &body, &mut out);
     ([(header::CONTENT_TYPE, "text/xml; charset=utf-8")], out).into_response()
+}
+
+async fn yk(State(ctx): State<Arc<Ctx>>, axum::extract::Path(action): axum::extract::Path<String>, axum::extract::RawQuery(raw): axum::extract::RawQuery, body: axum::body::Bytes) -> Response {
+    let q = url_params(raw.as_deref().unwrap_or(""));
+    let open = action.starts_with("party_") && PARTY.load(std::sync::atomic::Ordering::Relaxed);
+    if !open && q.get("p").map(|p| p != &ctx.password).unwrap_or(true) {
+        return (StatusCode::UNAUTHORIZED, "clave incorrecta").into_response();
+    }
+    let Some(remote) = ctx.remote.clone() else { return StatusCode::NOT_FOUND.into_response() };
+    let mut arg: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    if arg.is_null() {
+        arg = json!(q);
+    }
+    let out = remote(action, arg).await;
+    ([(header::CONTENT_TYPE, "application/json; charset=utf-8"), (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")], out.to_string()).into_response()
 }
 
 fn authed(ctx: &Ctx, q: &HashMap<String, String>) -> bool {

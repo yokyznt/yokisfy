@@ -60,6 +60,7 @@ pub struct Stream {
     rate: u32,
     total: Option<Duration>,
     meter: [f32; 6],
+    dsp: crate::dsp::Chain,
 }
 
 fn err(e: impl std::fmt::Display) -> SeekError {
@@ -95,6 +96,7 @@ impl Stream {
             decoder,
             buf: Vec::new(),
             meter: [0.0; 6],
+            dsp: Default::default(),
             idx: 0,
             total,
         };
@@ -127,6 +129,7 @@ impl Stream {
                     self.idx = 0;
                     self.channels = spec.channels.count() as u16;
                     self.rate = spec.rate;
+                    self.dsp.process(&mut self.buf, self.channels as usize, self.rate);
                     return true;
                 }
                 Err(SymError::DecodeError(_)) if errors < 8 => errors += 1,

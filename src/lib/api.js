@@ -56,6 +56,12 @@ export const api = {
   downloadAs: (original, free, kind = null) => call('download_as', { original: plain(original), free: plain(free), kind }),
   formatSizes: (urls) => call('format_sizes', { urls }),
   snapshot: () => call('snapshot'),
+  stats: (days) => call('stats', { days, offset: -new Date().getTimezoneOffset() * 60 }),
+  pcCall: (action, body = null) => call('pc_call', { action, body }),
+  pcSync: () => call('pc_sync'),
+  partyHosts: () => call('party_hosts'),
+  partyCall: (url, action, body = null) => call('party_call', { url, action, body }),
+  openMini: () => call('open_mini'),
   newWindow: () => call('new_window'),
   extProgress: (pos, dur) => invoke('ext_progress', { pos, dur }).catch(() => {}),
   extEnded: () => invoke('ext_ended').catch(() => {}),
@@ -93,6 +99,13 @@ export async function boot() {
   await listen('import', (e) => {
     if (ui.importing) ui.importing = e.payload
   })
+  await listen('party-add', (e) => {
+    toast(`${e.payload.from} agregó «${e.payload.title}» a la fiesta`)
+  })
+  await listen('synced', (e) => {
+    toast(`Sincronizado con tu celular: ${e.payload} cambios`)
+    refreshPlaylists()
+  })
   await listen('autoradio', (e) => {
     toast(`Radio automática: música parecida a ${e.payload}`)
   })
@@ -114,6 +127,20 @@ export async function boot() {
   ui.playlists = pls
   ui.settings = settings
   for (const t of dls) ui.local[t.id] = t.localPath
+  if (settings.mobile) {
+    setTimeout(() => {
+      api
+        .pcSync()
+        .then((r) => {
+          if (r.received) {
+            toast(`Se sincronizó con ${r.name}: ${r.received} cosas nuevas`)
+            refreshPlaylists()
+            api.likedIds().then((ids) => ids.forEach((id) => (ui.liked[id] = true)))
+          }
+        })
+        .catch(() => {})
+    }, 6000)
+  }
   if (!ui.settings.mobile) {
     try {
       const { getCurrentWindow } = await import('@tauri-apps/api/window')
