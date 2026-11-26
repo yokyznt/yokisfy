@@ -108,7 +108,7 @@ export function totalTime(tracks) {
 }
 
 export function sourceName(s) {
-  return { jamendo: 'Jamendo', archive: 'Internet Archive', audius: 'Audius', radio: 'Radio', local: 'Local', youtube: '', mix: 'Para ti' }[s] ?? s
+  return { jamendo: 'Jamendo', archive: 'Internet Archive', audius: 'Audius', ccmixter: 'ccMixter', commons: 'Wikimedia Commons', radio: 'Radio', local: 'Local', youtube: '', mix: 'Para ti' }[s] ?? s
 }
 
 export function bestLabel(t) {

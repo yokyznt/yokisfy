@@ -64,6 +64,8 @@ fn write_tags(path: &Path, t: &Track, cover: Option<Vec<u8>>) -> std::result::Re
     let source = match t.source.as_str() {
         "jamendo" => "Jamendo",
         "audius" => "Audius",
+        "ccmixter" => "ccMixter",
+        "commons" => "Wikimedia Commons",
         "pc" => "tu PC",
         "archive" => "Internet Archive",
         o => o,
@@ -99,7 +101,7 @@ pub async fn download(client: &Client, t: &Track, f: &Format, dir: &Path, on: &(
             tokio::fs::create_dir_all(parent).await?;
         }
         let part = path.with_extension(format!("{}.part", f.kind));
-        let resp = client.get(&f.url).header("User-Agent", USER_AGENT).send().await?.error_for_status()?;
+        let resp = client.get(&f.url).header("User-Agent", USER_AGENT).header("Referer", crate::net::referer(&f.url).unwrap_or("")).send().await?.error_for_status()?;
         p.total = resp.content_length().or(f.size);
         let mut out = tokio::fs::File::create(&part).await?;
         let mut stream = resp.bytes_stream();

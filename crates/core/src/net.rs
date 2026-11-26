@@ -41,8 +41,15 @@ fn fail(s: &Shared, gen: u64, e: String) {
     }
 }
 
+pub fn referer(url: &str) -> Option<&'static str> {
+    url.contains("ccmixter.org/").then_some("https://ccmixter.org/")
+}
+
 fn worker(s: Arc<Shared>, gen: u64, start: u64) {
     let mut req = s.client.get(&s.url);
+    if let Some(r) = referer(&s.url) {
+        req = req.header(reqwest::header::REFERER, r);
+    }
     if start > 0 {
         req = req.header(reqwest::header::RANGE, format!("bytes={start}-"));
     }

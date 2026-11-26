@@ -91,7 +91,7 @@ impl Core {
 
     pub async fn search(&self, q: &str) -> SearchResults {
         let jid = self.jamendo_id();
-        let (ia, jm, au, rd, yt) = tokio::join!(
+        let (ia, jm, au, rd, yt, fr) = tokio::join!(
             archive::search(&self.client, q),
             async {
                 match &jid {
@@ -101,7 +101,8 @@ impl Core {
             },
             audius::search(&self.client, q),
             radio::search(&self.client, q),
-            ytmusic::search(&self.client, q)
+            ytmusic::search(&self.client, q),
+            sources::free::search(&self.client, q)
         );
         let mut out = SearchResults::default();
         let mut album_lists = Vec::new();
@@ -128,6 +129,7 @@ impl Core {
             }
             Err(e) => out.warnings.push(format!("Internet Archive: {e}")),
         }
+        track_lists.push(fr);
         let free = interleave(track_lists);
         let free_albums = interleave(album_lists);
         match yt {
@@ -478,11 +480,11 @@ impl Core {
             .map(|u| {
                 let client = self.client.clone();
                 async move {
-                    let head = client.head(&u).timeout(std::time::Duration::from_secs(6)).send().await.ok().filter(|r| r.status().is_success());
+                    let head = client.head(&u).header("Referer", crate::net::referer(&u).unwrap_or("")).timeout(std::time::Duration::from_secs(6)).send().await.ok().filter(|r| r.status().is_success());
                     if let Some(n) = head.and_then(|r| r.content_length()).filter(|n| *n > 50_000) {
                         return Some(n);
                     }
-                    let r = client.get(&u).header("Range", "bytes=0-0").timeout(std::time::Duration::from_secs(6)).send().await.ok()?;
+                    let r = client.get(&u).header("Range", "bytes=0-0").header("Referer", crate::net::referer(&u).unwrap_or("")).timeout(std::time::Duration::from_secs(6)).send().await.ok()?;
                     r.headers()
                         .get("content-range")
                         .and_then(|v| v.to_str().ok())
