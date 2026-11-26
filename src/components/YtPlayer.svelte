@@ -40,7 +40,7 @@
     lastPos = 0
     lastState = -1
     cmd(player.playing ? 'loadVideoById' : 'cueVideoById', [{ videoId: id, startSeconds: 0 }])
-    cmd('setVolume', [Math.round(player.volume * 100)])
+    cmd('setVolume', [Math.round(player.volume * player.volume * 100)])
   }
 
   $effect(() => {
@@ -66,7 +66,7 @@
   })
 
   $effect(() => {
-    if (ready) cmd('setVolume', [Math.round(player.volume * 100)])
+    if (ready) cmd('setVolume', [Math.round(player.volume * player.volume * 100)])
   })
 
   $effect(() => {
