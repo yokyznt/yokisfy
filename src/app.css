@@ -1848,6 +1848,58 @@ button:disabled {
 .fp-foot {
   display: flex;
   justify-content: flex-end;
+  gap: 4px;
+}
+
+.fp-lyrics {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 0 40vh;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  mask-image: linear-gradient(180deg, transparent, #000 12%, #000 80%, transparent);
+  scrollbar-width: none;
+}
+
+.lyr-line {
+  text-align: left;
+  font: 700 clamp(20px, 3.2vw, 30px)/1.3 var(--font);
+  letter-spacing: -0.02em;
+  color: var(--tx-3);
+  padding: 4px 0;
+  transition: color 0.25s, transform 0.25s;
+  transform-origin: left center;
+}
+
+.lyr-line.past {
+  color: var(--tx-2);
+}
+
+.lyr-line.on {
+  color: var(--tx);
+}
+
+.lyr-line:hover {
+  color: var(--tx);
+}
+
+.lyr-note,
+.lyr-plain {
+  color: var(--tx-2);
+  font-size: 18px;
+  line-height: 1.6;
+  white-space: pre-line;
+  margin: 0;
+}
+
+@media (min-width: 1101px) {
+  .fp-lyrics,
+  .fp-art {
+    width: min(760px, 100%);
+    align-self: center;
+  }
 }
 
 .yt {

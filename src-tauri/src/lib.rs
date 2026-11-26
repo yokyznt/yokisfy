@@ -180,6 +180,30 @@ async fn download(app: AppHandle, core: C<'_>, track: Track, kind: Option<String
 }
 
 #[tauri::command]
+async fn lyrics(core: C<'_>, track: Track) -> R<Option<yokisfy_core::lyrics::Lyrics>> {
+    core.lyrics(&track).await
+}
+
+#[tauri::command]
+async fn free_versions(app: AppHandle, core: C<'_>, tracks: Vec<Track>) -> R<Vec<Option<Track>>> {
+    let h = app.clone();
+    Ok(core
+        .free_versions(tracks, &move |done, total| {
+            let _ = h.emit("scan", json!({ "done": done, "total": total }));
+        })
+        .await)
+}
+
+#[tauri::command]
+async fn download_as(app: AppHandle, core: C<'_>, original: Track, free: Track) -> R<Track> {
+    let h = app.clone();
+    core.download_as(original, free, &move |p: Progress| {
+        let _ = h.emit("download", p);
+    })
+    .await
+}
+
+#[tauri::command]
 async fn artist(core: C<'_>, id: String) -> R<yokisfy_core::sources::ytmusic::ArtistDetail> {
     core.artist(&id).await
 }
@@ -389,7 +413,7 @@ pub fn run() {
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, artist, ext_progress, ext_ended, ext_failed
+            import_spotify, artist, lyrics, free_versions, download_as, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");

@@ -4,7 +4,7 @@
   import TrackList from '../components/TrackList.svelte'
   import { api, refreshPlaylists } from '../lib/api.js'
   import { ui, player, totalTime, back, ask, toast, isLocal } from '../lib/state.svelte.js'
-  import { smartDownload, canDownload } from '../lib/actions.js'
+  import { smartDownload, canDownload, downloadAll } from '../lib/actions.js'
 
   let { kind, id = null } = $props()
   let tracks = $state([])
@@ -42,6 +42,7 @@
 
   let here = $derived(tracks.length && tracks.some((t) => t.id === player.track?.id))
   let pending = $derived(tracks.filter((t) => !isLocal(t) && canDownload(t)))
+  let online = $derived(tracks.filter((t) => !isLocal(t) && !canDownload(t) && !t.live))
 
   async function rename() {
     const n = await ask('Renombrar playlist', name)
@@ -86,7 +87,7 @@
       <Icon name={here && player.playing ? 'pause' : 'play'} size={22} />
     </button>
     <button class="icon-btn" disabled={!tracks.length} onclick={() => { api.shuffle(true); player.shuffle = true; api.play(tracks, Math.floor(Math.random() * tracks.length)) }} aria-label="Aleatorio" title="Aleatorio"><Icon name="shuffle" size={22} /></button>
-    <button class="icon-btn" onclick={(e) => smartDownload(e, pending)} disabled={!pending.length} aria-label="Descargar todo" title="Descargar todo"><Icon name={pending.length || !tracks.length ? 'download' : 'check'} size={22} /></button>
+    <button class="icon-btn" onclick={(e) => (online.length ? downloadAll(tracks) : smartDownload(e, pending))} disabled={(!pending.length && !online.length) || !!ui.scanning} aria-label="Descargar todo lo posible" title="Descargar todo lo posible"><Icon name={pending.length || online.length || !tracks.length ? 'download' : 'check'} size={22} /></button>
     {#if kind === 'playlist'}
       <button class="icon-btn" onclick={rename} aria-label="Renombrar" title="Renombrar"><Icon name="edit" size={20} /></button>
       <button class="icon-btn" onclick={remove} aria-label="Eliminar playlist" title="Eliminar playlist"><Icon name="trash" size={20} /></button>

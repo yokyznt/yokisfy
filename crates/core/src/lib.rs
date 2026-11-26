@@ -3,6 +3,7 @@ pub mod discover;
 mod keys;
 pub mod download;
 pub mod library;
+pub mod lyrics;
 pub mod model;
 pub mod net;
 pub mod pc;
@@ -285,6 +286,16 @@ impl Core {
     }
 
     pub async fn import_spotify(&self, link: &str, on: &(dyn Fn(usize, usize) + Send + Sync)) -> Result<ImportResult> {
+        if spotify::parse_link(link).is_none() {
+            if let Some(pid) = ytmusic::playlist_id(link) {
+                on(0, 0);
+                let (name, _, tracks) = ytmusic::playlist(&self.client, &pid).await?;
+                let id = self.lib.create_playlist(&name)?;
+                self.lib.add_to_playlist(id, &tracks)?;
+                return Ok(ImportResult { playlist_id: id, name, total: tracks.len(), youtube: tracks.len(), ..Default::default() });
+            }
+            return Err(Error::Msg("Pega un link de Spotify (playlist, álbum o canción) o de una playlist de YouTube / YouTube Music".into()));
+        }
         let list = spotify::import(&self.client, link).await?;
         let total = list.tracks.len();
         let done = std::sync::atomic::AtomicUsize::new(0);
@@ -335,6 +346,48 @@ impl Core {
         t.local_path = Some(p);
         self.player.update(t.clone());
         Ok(t)
+    }
+
+    pub async fn lyrics(&self, t: &Track) -> Result<Option<lyrics::Lyrics>> {
+        lyrics::find(&self.client, t).await
+    }
+
+    pub async fn free_versions(&self, tracks: Vec<Track>, on: &(dyn Fn(usize, usize) + Send + Sync)) -> Vec<Option<Track>> {
+        let total = tracks.len();
+        let done = std::sync::atomic::AtomicUsize::new(0);
+        let jid = self.jamendo_id();
+        on(0, total);
+        let out: Vec<Option<Track>> = futures_util::stream::iter(tracks)
+            .map(|t| {
+                let client = self.client.clone();
+                let jid = jid.clone();
+                async move {
+                    if t.downloadable {
+                        return Some(t);
+                    }
+                    let w = spotify::Wanted { title: t.title.clone(), artist: t.artist.split(", ").next().unwrap_or(&t.artist).to_string(), artists: t.artist.clone(), duration: t.duration };
+                    free_match(&client, jid.as_deref(), &w).await
+                }
+            })
+            .buffered(3)
+            .inspect(|_| on(done.fetch_add(1, Ordering::Relaxed) + 1, total))
+            .collect()
+            .await;
+        out.into_iter().map(|t| t.map(|t| self.lib.resolve(vec![t]).remove(0))).collect()
+    }
+
+    pub async fn download_as(&self, original: Track, free: Track, on: &(dyn Fn(download::Progress) + Send + Sync)) -> Result<Track> {
+        let got = if free.local_path.is_some() { free } else { self.download(free, None, on).await? };
+        if original.id != got.id {
+            if let Some(p) = &got.local_path {
+                self.lib.set_local(&original, p)?;
+                let mut o = original;
+                o.local_path = Some(p.clone());
+                self.player.update(o.clone());
+                return Ok(o);
+            }
+        }
+        Ok(got)
     }
 
     pub fn delete_download(&self, id: &str) -> Result<()> {
@@ -389,6 +442,39 @@ async fn match_one(client: &Client, w: &spotify::Wanted) -> Option<Track> {
         }
     }
     None
+}
+
+async fn free_match(client: &Client, jid: Option<&str>, w: &spotify::Wanted) -> Option<Track> {
+    let want = youtube::core_title(&w.title);
+    let q = format!("{} {}", w.artist, want);
+    let (jm, au, ia) = tokio::join!(
+        async {
+            match jid {
+                Some(id) => jamendo::search(client, id, &q).await.map(|r| r.tracks).unwrap_or_default(),
+                None => vec![],
+            }
+        },
+        async { audius::search(client, &q).await.map(|r| r.tracks).unwrap_or_default() },
+        async { archive::search(client, &q).await.map(|r| r.tracks).unwrap_or_default() }
+    );
+    let a0 = youtube::norm(&w.artist);
+    let full = youtube::norm(&w.title);
+    let mut ok: Vec<Track> = jm
+        .into_iter()
+        .chain(au)
+        .chain(ia)
+        .filter(|t| {
+            let ta = youtube::norm(&t.artist);
+            t.downloadable
+                && youtube::overlap(&want, &youtube::norm(&t.title)) >= 0.8
+                && youtube::overlap(&youtube::core_title(&t.title), &full) >= 0.6
+                && !a0.is_empty()
+                && (ta.contains(&a0) || (!ta.is_empty() && a0.contains(&ta)))
+                && (w.duration <= 0.0 || t.duration <= 0.0 || (t.duration - w.duration).abs() <= 8.0)
+        })
+        .collect();
+    ok.sort_by_key(|t| !t.formats.iter().any(|f| f.kind == "flac"));
+    ok.into_iter().next()
 }
 
 fn interleave<T>(lists: Vec<Vec<T>>) -> Vec<T> {

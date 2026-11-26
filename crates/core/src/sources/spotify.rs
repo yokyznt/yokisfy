@@ -93,8 +93,55 @@ pub async fn import(client: &Client, link: &str) -> Result<Imported> {
             });
         }
     }
+    if kind == "playlist" && tracks.len() >= 100 {
+        if let Some(token) = data["props"]["pageProps"]["state"]["settings"]["session"]["accessToken"].as_str() {
+            let mut offset = tracks.len();
+            while offset < 5000 {
+                match page(client, token, &id, offset).await {
+                    Ok((more, total)) if !more.is_empty() => {
+                        offset += more.len();
+                        tracks.extend(more);
+                        if offset >= total {
+                            break;
+                        }
+                    }
+                    _ => break,
+                }
+            }
+        }
+    }
     if tracks.is_empty() {
         return Err(Error::Msg("La lista de Spotify está vacía o es privada".into()));
     }
     Ok(Imported { name, cover, tracks })
+}
+
+async fn page(client: &Client, token: &str, id: &str, offset: usize) -> Result<(Vec<Wanted>, usize)> {
+    let vars = serde_json::json!({ "uri": format!("spotify:playlist:{id}"), "offset": offset, "limit": 100 }).to_string();
+    let ext = r#"{"persistedQuery":{"version":1,"sha256Hash":"19ff1327c29e99c208c86d7a9d8f1929cfdf3d3202a0ff4253c821f1901aa94d"}}"#;
+    let v: Value = client
+        .get("https://api-partner.spotify.com/pathfinder/v1/query")
+        .query(&[("operationName", "fetchPlaylist"), ("variables", vars.as_str()), ("extensions", ext)])
+        .header("Authorization", format!("Bearer {token}"))
+        .header("User-Agent", UA)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let c = &v["data"]["playlistV2"]["content"];
+    let total = c["totalCount"].as_u64().unwrap_or(0) as usize;
+    let mut out = Vec::new();
+    for it in c["items"].as_array().into_iter().flatten() {
+        let d = &it["itemV2"]["data"];
+        let Some(title) = d["name"].as_str() else { continue };
+        let names: Vec<String> = d["artists"]["items"].as_array().into_iter().flatten().filter_map(|a| a["profile"]["name"].as_str().map(String::from)).collect();
+        out.push(Wanted {
+            title: title.to_string(),
+            artist: names.first().cloned().unwrap_or_default(),
+            artists: names.join(", "),
+            duration: d["trackDuration"]["totalMilliseconds"].as_f64().unwrap_or(0.0) / 1000.0,
+        });
+    }
+    Ok((out, total))
 }

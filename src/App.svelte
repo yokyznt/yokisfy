@@ -83,7 +83,7 @@
     <div class="side-sec">
       <span class="label">Playlists</span>
       <span class="side-sec-btns">
-        <button class="icon-btn sm" onclick={() => importSpotify()} disabled={!!ui.importing} aria-label="Importar playlist de Spotify" title="Importar playlist de Spotify"><Icon name="download" size={17} /></button>
+        <button class="icon-btn sm" onclick={() => importSpotify()} disabled={!!ui.importing} aria-label="Importar playlist de Spotify o YouTube Music" title="Importar playlist de Spotify o YouTube Music"><Icon name="download" size={17} /></button>
         <button class="icon-btn sm" onclick={() => newPlaylist()} aria-label="Nueva playlist" title="Nueva playlist"><Icon name="plus" size={17} /></button>
       </span>
     </div>

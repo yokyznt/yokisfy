@@ -3,8 +3,8 @@
   import Cover from '../components/Cover.svelte'
   import TrackList from '../components/TrackList.svelte'
   import { api } from '../lib/api.js'
-  import { player, sourceName, totalTime, openMenu, isLocal, go } from '../lib/state.svelte.js'
-  import { smartDownload, playlistItems, openLicense, canDownload } from '../lib/actions.js'
+  import { ui, player, sourceName, totalTime, openMenu, isLocal, go } from '../lib/state.svelte.js'
+  import { smartDownload, playlistItems, openLicense, canDownload, downloadAll } from '../lib/actions.js'
 
   let { id } = $props()
   let data = $state(null)
@@ -18,6 +18,7 @@
 
   let playingHere = $derived(data && player.track?.albumId === data.album.id)
   let pending = $derived(data ? data.tracks.filter((t) => !isLocal(t) && canDownload(t)) : [])
+  let online = $derived(data ? data.tracks.filter((t) => !isLocal(t) && !canDownload(t) && !t.live) : [])
 
   function playAll(shuffle = false) {
     if (playingHere && !shuffle) return api.toggle()
@@ -56,8 +57,8 @@
       </button>
       <button class="icon-btn" onclick={() => playAll(true)} aria-label="Aleatorio" title="Aleatorio"><Icon name="shuffle" size={22} /></button>
       <button class="icon-btn" onclick={(e) => openMenu(e, playlistItems(data.tracks))} aria-label="Añadir a playlist" title="Añadir a playlist"><Icon name="plus" size={22} /></button>
-      <button class="icon-btn" onclick={(e) => smartDownload(e, pending)} disabled={!pending.length} aria-label="Descargar álbum" title={pending.length ? 'Descargar álbum' : data.tracks.some(canDownload) ? 'Ya está descargado' : 'Solo streaming'}>
-        <Icon name={pending.length || !data.tracks.some(canDownload) ? 'download' : 'check'} size={22} />
+      <button class="icon-btn" onclick={(e) => (online.length ? downloadAll(data.tracks) : smartDownload(e, pending))} disabled={!pending.length && !online.length || !!ui.scanning} aria-label="Descargar todo lo posible" title={pending.length || online.length ? 'Descargar todo lo posible' : 'Ya está descargado'}>
+        <Icon name={pending.length || online.length ? 'download' : 'check'} size={22} />
       </button>
       <button class="icon-btn" onclick={() => api.enqueue(data.tracks)} aria-label="Añadir a la cola" title="Añadir a la cola"><Icon name="queue" size={22} /></button>
     </div>

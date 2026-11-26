@@ -13,6 +13,8 @@ export const ui = $state({
   theme: typeof document !== 'undefined' ? document.documentElement.dataset.theme : 'dark',
   homeCache: null,
   importing: null,
+  scanning: null,
+  lyrics: false,
   searchCache: { q: '', results: null }
 })
 

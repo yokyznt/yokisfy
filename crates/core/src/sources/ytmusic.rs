@@ -347,3 +347,50 @@ pub async fn artist_by_name(client: &Client, name: &str) -> Result<ArtistDetail>
     let pick = list.iter().find(|a| norm(&a.name) == want).or(list.first()).ok_or_else(|| Error::Msg(format!("No encontré al artista {first}")))?;
     artist(client, &pick.id).await
 }
+
+fn find_token(v: &Value) -> Option<String> {
+    match v {
+        Value::Object(m) => {
+            if let Some(t) = m.get("continuationItemRenderer").and_then(|c| c["continuationEndpoint"]["continuationCommand"]["token"].as_str()) {
+                return Some(t.to_string());
+            }
+            m.values().find_map(find_token)
+        }
+        Value::Array(a) => a.iter().find_map(find_token),
+        _ => None,
+    }
+}
+
+pub fn playlist_id(link: &str) -> Option<String> {
+    let s = link.trim();
+    let id = s.split("list=").nth(1)?.split(['&', '#', ' ']).next()?.to_string();
+    (id.len() >= 10 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')).then_some(id)
+}
+
+pub async fn playlist(client: &Client, id: &str) -> Result<(String, Option<String>, Vec<Track>)> {
+    let bid = if id.starts_with("VL") { id.to_string() } else { format!("VL{id}") };
+    let v = call(client, "browse", json!({ "browseId": bid })).await?;
+    let tc = &v["contents"]["twoColumnBrowseResultsRenderer"];
+    let h = &tc["tabs"][0]["tabRenderer"]["content"]["sectionListRenderer"]["contents"][0]["musicResponsiveHeaderRenderer"];
+    let name = Some(text(&h["title"])).filter(|s| !s.is_empty()).unwrap_or_else(|| "Playlist de YouTube Music".into());
+    let cover = thumb(&h["thumbnail"]);
+    let mut items = Vec::new();
+    list_items(&tc["secondaryContents"], &mut items);
+    let mut token = find_token(&tc["secondaryContents"]);
+    let mut pages = 0;
+    while let Some(t) = token.take() {
+        pages += 1;
+        if pages > 50 {
+            break;
+        }
+        let c = call(client, "browse", json!({ "continuation": t })).await?;
+        let acts = &c["onResponseReceivedActions"];
+        list_items(acts, &mut items);
+        token = find_token(acts);
+    }
+    let tracks: Vec<Track> = items.iter().filter_map(|r| song(r, None)).collect();
+    if tracks.is_empty() {
+        return Err(Error::Msg("La playlist de YouTube Music está vacía o es privada".into()));
+    }
+    Ok((name, cover, tracks))
+}

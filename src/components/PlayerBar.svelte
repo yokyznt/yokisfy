@@ -122,6 +122,7 @@
   <div class="pb-right">
     {#if t}
       {#if quality}<span class="tag" title={`Fuente: ${sourceName(t.source)}`}>{quality}</span>{/if}
+      {#if !t.live}<button class="icon-btn sm" class:active={ui.lyrics && ui.fullPlayer} onclick={() => { ui.lyrics = true; ui.fullPlayer = true }} aria-label="Letra" title="Letra"><Icon name="lyrics" size={18} /></button>{/if}
       <button class="icon-btn sm" onclick={(e) => trackMenu(e, t)} aria-label="Más opciones"><Icon name="more" size={17} /></button>
     {/if}
     <button class="icon-btn sm" class:active={ui.queueOpen} onclick={() => (ui.queueOpen = !ui.queueOpen)} aria-label="Cola" title="Cola"><Icon name="queue" size={18} /></button>

@@ -32,9 +32,16 @@
   </form>
 {/if}
 
+{#if ui.scanning}
+  <div class="import-card" role="status" aria-live="polite">
+    <span>Buscando versiones gratis para descargar{ui.scanning.total ? ` · ${ui.scanning.done} de ${ui.scanning.total}` : '…'}</span>
+    <div class="import-bar"><span style={`width:${ui.scanning.total ? (ui.scanning.done / ui.scanning.total) * 100 : 4}%`}></span></div>
+  </div>
+{/if}
+
 {#if ui.importing}
   <div class="import-card" role="status" aria-live="polite">
-    <span>Importando de Spotify{ui.importing.total ? ` · ${ui.importing.done} de ${ui.importing.total}` : '…'}</span>
+    <span>Importando playlist{ui.importing.total ? ` · ${ui.importing.done} de ${ui.importing.total}` : '…'}</span>
     <div class="import-bar"><span style={`width:${ui.importing.total ? (ui.importing.done / ui.importing.total) * 100 : 4}%`}></span></div>
   </div>
 {/if}

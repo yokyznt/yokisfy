@@ -22,6 +22,44 @@ export async function download(t, kind = null) {
   }
 }
 
+export async function downloadAll(tracks) {
+  const todo = tracks.filter((t) => !t.live && !isLocalTrack(t))
+  if (!todo.length) return toast('Ya está todo descargado')
+  if (ui.scanning) return toast('Ya estoy buscando otras canciones, espera un momento')
+  ui.scanning = { done: 0, total: todo.length }
+  let found
+  try {
+    found = await api.freeVersions(todo)
+  } catch {
+    ui.scanning = null
+    return
+  }
+  ui.scanning = null
+  const pairs = todo.map((t, i) => [t, found[i]]).filter(([, f]) => f)
+  const online = todo.length - pairs.length
+  toast(pairs.length ? `Descargando ${pairs.length} en la mejor calidad${online ? ` · ${online} solo se pueden escuchar en línea` : ''}` : `Ninguna tiene versión gratis para descargar; ${online} se escuchan en línea`)
+  let next = 0
+  const worker = async () => {
+    while (next < pairs.length) {
+      const [orig, free] = pairs[next++]
+      const f = free.formats?.find((x) => x.kind !== 'wav') || free.formats?.[0]
+      ui.downloads[orig.id] = { id: orig.id, title: orig.title, artist: orig.artist, format: f?.label || '', received: 0, total: null, state: 'queued' }
+      try {
+        const t = await api.downloadAs(orig, free)
+        if (t.localPath) ui.local[orig.id] = t.localPath
+        if (ui.downloads[orig.id]?.state !== 'done') delete ui.downloads[orig.id]
+      } catch {
+        delete ui.downloads[orig.id]
+      }
+    }
+  }
+  await Promise.all([worker(), worker()])
+}
+
+function isLocalTrack(t) {
+  return !!(ui.local[t.id] || t.localPath)
+}
+
 export function downloadItems(tracks) {
   const list = (Array.isArray(tracks) ? tracks : [tracks]).filter(canDownload)
   const labels = []
@@ -61,7 +99,7 @@ export async function newPlaylist(tracks = []) {
 }
 
 export async function importSpotify() {
-  const link = await ask('Pega el link de una playlist, álbum o canción de Spotify', '', 'Importar')
+  const link = await ask('Pega el link de una playlist de Spotify o YouTube Music', '', 'Importar')
   if (!link?.trim()) return
   ui.importing = { done: 0, total: 0 }
   try {

@@ -5,8 +5,8 @@
   import AlbumGrid from '../components/AlbumGrid.svelte'
   import ArtistGrid from '../components/ArtistGrid.svelte'
   import { api } from '../lib/api.js'
-  import { player } from '../lib/state.svelte.js'
-  import { startRadio } from '../lib/actions.js'
+  import { ui, player } from '../lib/state.svelte.js'
+  import { startRadio, downloadAll } from '../lib/actions.js'
 
   let { id } = $props()
   let data = $state(null)
@@ -49,6 +49,7 @@
         <Icon name={playingHere && player.playing ? 'pause' : 'play'} size={22} />
       </button>
       <button class="icon-btn" onclick={() => playAll(true)} disabled={!data.top.length} aria-label="Aleatorio" title="Aleatorio"><Icon name="shuffle" size={22} /></button>
+      <button class="icon-btn" onclick={() => downloadAll(data.top)} disabled={!data.top.length || !!ui.scanning} aria-label="Descargar todo lo posible" title="Descargar todo lo posible"><Icon name="download" size={22} /></button>
       <button class="icon-btn" onclick={() => data.top[0] && startRadio(data.top[0])} disabled={!data.top.length} aria-label="Radio del artista" title="Radio del artista"><Icon name="radio" size={22} /></button>
     </div>
     {#if data.top.length}

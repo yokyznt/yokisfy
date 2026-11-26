@@ -12,7 +12,7 @@
   <div class="sec-head">
     <h1 class="h1">Tu biblioteca</h1>
     <div class="sec-actions">
-      <button class="btn ghost" onclick={() => importSpotify()} disabled={!!ui.importing}><Icon name="download" size={16} /> Importar de Spotify</button>
+      <button class="btn ghost" onclick={() => importSpotify()} disabled={!!ui.importing}><Icon name="download" size={16} /> Importar playlist</button>
       <button class="btn ghost" onclick={() => newPlaylist()}><Icon name="plus" size={16} /> Nueva playlist</button>
     </div>
   </div>

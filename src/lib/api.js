@@ -47,6 +47,9 @@ export const api = {
   download: (track, kind = null) => call('download', { track: plain(track), kind }),
   deleteDownload: (id) => call('delete_download', { id }),
   importSpotify: (link) => call('import_spotify', { link }),
+  lyrics: (track) => invoke('lyrics', { track: plain(track) }).catch(() => null),
+  freeVersions: (tracks) => call('free_versions', { tracks: plain(tracks) }),
+  downloadAs: (original, free) => call('download_as', { original: plain(original), free: plain(free) }),
   extProgress: (pos, dur) => invoke('ext_progress', { pos, dur }).catch(() => {}),
   extEnded: () => invoke('ext_ended').catch(() => {}),
   extFailed: (error) => invoke('ext_failed', { error }).catch(() => {}),
@@ -64,6 +67,9 @@ export async function boot() {
   })
   await listen('queue', (e) => {
     player.queue = e.payload.tracks
+  })
+  await listen('scan', (e) => {
+    if (ui.scanning) ui.scanning = e.payload
   })
   await listen('import', (e) => {
     if (ui.importing) ui.importing = e.payload
