@@ -69,7 +69,16 @@ class MediaService : Service() {
         wifi = (applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager).createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "yokisfy:play")
     }
 
+    fun cover(): Bitmap? = art
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val s = state
+        if (intent?.hasExtra("action") == true && (MediaPlugin.channel == null || s == null || !s.active)) {
+            YkWidget.render(this, null)
+            stopSelf()
+            instance = null
+            return START_NOT_STICKY
+        }
         intent?.getStringExtra("action")?.let { MediaPlugin.emit(it) }
         refresh()
         return START_NOT_STICKY
@@ -96,6 +105,7 @@ class MediaService : Service() {
     fun refresh() {
         val s = state ?: return
         if (!s.active) {
+            YkWidget.render(this, null)
             locks(false)
             session.isActive = false
             if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
@@ -140,6 +150,7 @@ class MediaService : Service() {
             .build()
         if (Build.VERSION.SDK_INT >= 29) startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK) else startForeground(ID, n)
         locks(s.playing)
+        YkWidget.render(this, art)
     }
 
     private fun loadArt(url: String?) {
@@ -148,7 +159,10 @@ class MediaService : Service() {
         if (url.isNullOrEmpty() || !url.startsWith("http")) return
         thread {
             val bmp = try {
-                URL(url).openStream().use { BitmapFactory.decodeStream(it) }
+                URL(url).openStream().use { BitmapFactory.decodeStream(it) }?.let { b ->
+                    val m = maxOf(b.width, b.height)
+                    if (m > 400) Bitmap.createScaledBitmap(b, b.width * 400 / m, b.height * 400 / m, true) else b
+                }
             } catch (_: Exception) {
                 null
             }
