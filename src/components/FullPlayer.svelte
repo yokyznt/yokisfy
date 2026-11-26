@@ -101,7 +101,7 @@
     {#if mode === 'visual'}
       <Visualizer {colors} {preset} />
     {:else if mode === 'lyrics'}
-      <Visualizer {colors} modes={[0, 3, 5, 1, 6]} every={28} dim={0.45} />
+      <Visualizer {colors} modes={[11, 0, 9, 3, 8, 5, 13, 1, 7, 6]} every={28} dim={0.45} />
     {:else}
       <Backdrop cover={t.cover} {colors} intense={mode === 'lyrics'} />
     {/if}
