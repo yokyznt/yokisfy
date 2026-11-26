@@ -22,8 +22,21 @@
   import Equalizer from './components/Equalizer.svelte'
   import MiniPlayer from './components/MiniPlayer.svelte'
   import { boot, api } from './lib/api.js'
-  import { ui, player, go, root, back, setTheme, isLight } from './lib/state.svelte.js'
+  import { ui, player, go, root, back, setTheme, isLight, look, paintAccent } from './lib/state.svelte.js'
+  import { paletteFor } from './lib/palette.js'
   import { newPlaylist, importSpotify } from './lib/actions.js'
+
+  $effect(() => {
+    if (!look.dynamic) {
+      paintAccent(look.accent || null)
+      return
+    }
+    const c = player.track?.cover
+    if (!c) return paintAccent(look.accent || null)
+    let alive = true
+    paletteFor(c).then((p) => alive && look.dynamic && paintAccent(p[0]))
+    return () => (alive = false)
+  })
 
   let ready = $state(false)
   const isMini = new URLSearchParams(location.search).has('mini')

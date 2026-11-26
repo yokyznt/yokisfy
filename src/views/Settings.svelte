@@ -4,7 +4,7 @@
   import { checkUpdate } from '../lib/update.js'
   import Icon from '../components/Icon.svelte'
   import { api } from '../lib/api.js'
-  import { ui, setTheme, toast, THEMES } from '../lib/state.svelte.js'
+  import { ui, setTheme, toast, THEMES, look, setLook, resetLook, ACCENTS, BACKGROUNDS, FONTS } from '../lib/state.svelte.js'
   import { open } from '@tauri-apps/plugin-dialog'
   import { openUrl } from '@tauri-apps/plugin-opener'
 
@@ -176,6 +176,51 @@
           <span>{name}</span>
         </button>
       {/each}
+    </div>
+
+    <h3 class="set-sub">Color de acento</h3>
+    <div class="swatches">
+      <button class="sw sw-auto" class:on={!look.accent && !look.dynamic} onclick={() => { setLook('dynamic', null); setLook('accent', null) }} aria-label="El del tema" title="El del tema">Tema</button>
+      {#each ACCENTS as c}
+        <button class="sw" class:on={!look.dynamic && look.accent === c} style={`--c:${c}`} onclick={() => { setLook('dynamic', null); setLook('accent', c) }} aria-label={`Acento ${c}`}></button>
+      {/each}
+      <label class="sw sw-pick" class:on={!look.dynamic && look.accent && !ACCENTS.includes(look.accent)} title="Otro color" style={`--c:${look.accent || '#888888'}`}>
+        <input type="color" value={look.accent || '#7a6cff'} oninput={(e) => { setLook('dynamic', null); setLook('accent', e.currentTarget.value) }} aria-label="Elegir cualquier color de acento" />
+      </label>
+    </div>
+    <div class="set-row">
+      <span class="set-name">Que el acento tome el color de la portada de cada canción</span>
+      <button class="switch" role="switch" aria-checked={!!look.dynamic} aria-label="Acento de la portada" onclick={() => setLook('dynamic', look.dynamic ? null : true)}><i></i></button>
+    </div>
+
+    <h3 class="set-sub">Color de fondo</h3>
+    <div class="swatches">
+      <button class="sw sw-auto" class:on={!look.bg} onclick={() => setLook('bg', null)} aria-label="El del tema" title="El del tema">Tema</button>
+      {#each BACKGROUNDS as c}
+        <button class="sw" class:on={look.bg === c} style={`--c:${c}`} onclick={() => setLook('bg', c)} aria-label={`Fondo ${c}`}></button>
+      {/each}
+      <label class="sw sw-pick" class:on={look.bg && !BACKGROUNDS.includes(look.bg)} title="Otro color" style={`--c:${look.bg || '#222222'}`}>
+        <input type="color" value={look.bg || '#101018'} oninput={(e) => setLook('bg', e.currentTarget.value)} aria-label="Elegir cualquier color de fondo" />
+      </label>
+    </div>
+
+    <h3 class="set-sub">Letra</h3>
+    <div class="pt-hosts">
+      {#each Object.entries(FONTS) as [k, [name, css]]}
+        <button class="chip" class:on={(look.font || 'geist') === k} style={`font-family:${css}`} onclick={() => setLook('font', k === 'geist' ? null : k)}>{name}</button>
+      {/each}
+    </div>
+
+    <h3 class="set-sub">Tamaño de todo</h3>
+    <div class="pt-hosts">
+      {#each [[0.9, 'Chico'], [1, 'Normal'], [1.1, 'Grande'], [1.25, 'Muy grande']] as [v, name]}
+        <button class="chip" class:on={(look.scale || 1) === v} onclick={() => setLook('scale', v === 1 ? null : v)}>{name}</button>
+      {/each}
+    </div>
+
+    <div class="set-row">
+      <span class="set-name">Volver a como venía</span>
+      <button class="btn ghost" onclick={resetLook}>Restablecer</button>
     </div>
   </section>
 
