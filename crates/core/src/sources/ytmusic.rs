@@ -27,15 +27,51 @@ pub struct ArtistDetail {
     pub related: Vec<Artist>,
 }
 
-pub async fn call(client: &Client, endpoint: &str, body: Value) -> Result<Value> {
-    let mut b = json!({ "context": { "client": { "clientName": "WEB_REMIX", "clientVersion": "1.20251110.01.00", "hl": "es", "gl": "MX" } } });
-    if let (Some(m), Value::Object(extra)) = (b.as_object_mut(), body) {
-        m.extend(extra);
+static VERSION: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+const DEFAULT_VERSION: &str = "1.20261124.13.00";
+
+fn version() -> String {
+    VERSION.read().ok().and_then(|v| v.clone()).unwrap_or_else(|| DEFAULT_VERSION.to_string())
+}
+
+pub async fn refresh_version(client: &Client) -> Option<String> {
+    let html = client
+        .get("https://music.youtube.com/")
+        .header("User-Agent", UA)
+        .header("Cookie", "SOCS=CAI; CONSENT=YES+1")
+        .send()
+        .await
+        .ok()?
+        .text()
+        .await
+        .ok()?;
+    let key = "\"INNERTUBE_CLIENT_VERSION\":\"";
+    let i = html.find(key)? + key.len();
+    let v = html[i..].split('"').next()?.to_string();
+    if v.starts_with("1.") {
+        if let Ok(mut w) = VERSION.write() {
+            *w = Some(v.clone());
+        }
+        Some(v)
+    } else {
+        None
     }
+}
+
+fn looks_empty(endpoint: &str, v: &Value) -> bool {
+    endpoint != "next" && v.get("contents").is_none() && v.get("onResponseReceivedActions").is_none() && v.get("continuationContents").is_none()
+}
+
+pub async fn call(client: &Client, endpoint: &str, body: Value) -> Result<Value> {
     let mut last = Error::Msg("YouTube Music no respondió".into());
-    for i in 0..3u64 {
+    let mut healed = false;
+    for i in 0..4u64 {
         if i > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(1200 * i)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(900 * i)).await;
+        }
+        let mut b = json!({ "context": { "client": { "clientName": "WEB_REMIX", "clientVersion": version(), "hl": "es", "gl": crate::locale_country().unwrap_or_else(|| "MX".into()) } } });
+        if let (Some(m), Value::Object(extra)) = (b.as_object_mut(), body.clone()) {
+            m.extend(extra);
         }
         let r = client
             .post(format!("https://music.youtube.com/youtubei/v1/{endpoint}?prettyPrint=false"))
@@ -46,9 +82,18 @@ pub async fn call(client: &Client, endpoint: &str, body: Value) -> Result<Value>
             .send()
             .await;
         match r {
-            Ok(r) if r.status().is_success() => return Ok(r.json().await?),
+            Ok(r) if r.status().is_success() => {
+                let v: Value = r.json().await?;
+                if !looks_empty(endpoint, &v) || healed {
+                    return Ok(v);
+                }
+                last = Error::Msg("YouTube Music devolvió una respuesta vacía".into());
+            }
             Ok(r) => last = Error::Msg(format!("YouTube Music respondió {}", r.status())),
             Err(e) => last = e.into(),
+        }
+        if !healed && i >= 1 {
+            healed = refresh_version(client).await.is_some();
         }
     }
     Err(last)
@@ -393,4 +438,150 @@ pub async fn playlist(client: &Client, id: &str) -> Result<(String, Option<Strin
         return Err(Error::Msg("La playlist de YouTube Music está vacía o es privada".into()));
     }
     Ok((name, cover, tracks))
+}
+
+fn section_items(v: &Value) -> Vec<(String, Vec<Value>)> {
+    let secs = &v["contents"]["singleColumnBrowseResultsRenderer"]["tabs"][0]["tabRenderer"]["content"]["sectionListRenderer"]["contents"];
+    secs.as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|s| {
+            let c = s.get("musicCarouselShelfRenderer").or_else(|| s.get("gridRenderer"))?;
+            let t = text(&c["header"]["musicCarouselShelfBasicHeaderRenderer"]["title"]);
+            let items = c["contents"].as_array().or_else(|| c["items"].as_array()).cloned().unwrap_or_default();
+            Some((t, items))
+        })
+        .collect()
+}
+
+fn two_row_any(r: &Value) -> Option<Album> {
+    let id = browse_id(r)?;
+    let sub = text(&r["subtitle"]);
+    let (aid, kind) = if id.starts_with("MPRE") {
+        (format!("ytm:{id}"), "album")
+    } else if id.starts_with("VL") {
+        (format!("ytpl:{id}"), "playlist")
+    } else {
+        return None;
+    };
+    let parts: Vec<&str> = sub.split(" • ").collect();
+    let artist = if kind == "album" { parts.iter().find(|p| !matches!(**p, "Álbum" | "Sencillo" | "Single" | "EP" | "Album") && !(p.len() == 4 && p.chars().all(|c| c.is_ascii_digit()))).map(|s| s.to_string()).unwrap_or_default() } else { sub.clone() };
+    Some(Album {
+        id: aid,
+        source: "youtube".into(),
+        title: text(&r["title"]),
+        artist,
+        cover: thumb(&r["thumbnailRenderer"]),
+        year: parts.iter().find(|p| p.len() == 4 && p.chars().all(|c| c.is_ascii_digit())).map(|s| s.to_string()),
+        license: None,
+    })
+}
+
+pub struct Home {
+    pub trending: Vec<Track>,
+    pub top: Vec<Album>,
+    pub artists: Vec<Artist>,
+    pub releases: Vec<Album>,
+    pub playlists: Vec<Album>,
+}
+
+pub async fn home(client: &Client) -> Result<Home> {
+    let (charts, news, feed) = tokio::join!(
+        call(client, "browse", json!({ "browseId": "FEmusic_charts" })),
+        call(client, "browse", json!({ "browseId": "FEmusic_new_releases" })),
+        call(client, "browse", json!({ "browseId": "FEmusic_home" }))
+    );
+    let mut h = Home { trending: vec![], top: vec![], artists: vec![], releases: vec![], playlists: vec![] };
+    if let Ok(c) = &charts {
+        for (_, items) in section_items(c) {
+            for it in &items {
+                if let Some(r) = it.get("musicTwoRowItemRenderer") {
+                    if let Some(a) = two_row_any(r) {
+                        h.top.push(a);
+                    }
+                } else if let Some(r) = it.get("musicResponsiveListItemRenderer") {
+                    if let Some(a) = artist_item(r) {
+                        h.artists.push(a);
+                    }
+                }
+            }
+        }
+    }
+    h.artists.truncate(12);
+    if let Ok(n) = &news {
+        for (t, items) in section_items(n) {
+            let tl = t.to_lowercase();
+            if tl.contains("vídeo") || tl.contains("video") {
+                continue;
+            }
+            h.releases.extend(items.iter().filter_map(|it| two_row_any(&it["musicTwoRowItemRenderer"])).filter(|a| a.id.starts_with("ytm:")));
+        }
+    }
+    if let Ok(f) = &feed {
+        for (_, items) in section_items(f) {
+            h.playlists.extend(items.iter().filter_map(|it| two_row_any(&it["musicTwoRowItemRenderer"])).filter(|a| a.id.starts_with("ytpl:")));
+        }
+    }
+    if let Some(first) = h.top.first().map(|a| a.id.trim_start_matches("ytpl:").to_string()) {
+        if let Ok((_, _, t)) = playlist(client, &first).await {
+            h.trending = t.into_iter().take(20).collect();
+        }
+    }
+    if charts.is_err() && news.is_err() && feed.is_err() {
+        return Err(Error::Msg("YouTube Music no respondió".into()));
+    }
+    Ok(h)
+}
+
+pub async fn playlist_album(client: &Client, id: &str) -> Result<AlbumDetail> {
+    let (name, cover, tracks) = playlist(client, id).await?;
+    Ok(AlbumDetail {
+        album: Album { id: format!("ytpl:{id}"), source: "youtube".into(), title: name, artist: "YouTube Music".into(), cover, year: None, license: None },
+        tracks,
+    })
+}
+
+fn panel(v: &Value, out: &mut Vec<Track>) {
+    match v {
+        Value::Object(m) => {
+            if let Some(r) = m.get("playlistPanelVideoRenderer") {
+                if let Some(vid) = r["videoId"].as_str() {
+                    let byline: Vec<&Value> = r["longBylineText"]["runs"].as_array().map(|a| a.iter().collect()).unwrap_or_default();
+                    let artists: Vec<String> = byline.iter().filter(|x| x["navigationEndpoint"]["browseEndpoint"]["browseId"].as_str().map(|b| b.starts_with("UC")).unwrap_or(false)).filter_map(|x| x["text"].as_str().map(String::from)).collect();
+                    let album = byline.iter().find(|x| x["navigationEndpoint"]["browseEndpoint"]["browseId"].as_str().map(|b| b.starts_with("MPRE")).unwrap_or(false));
+                    let artist = if artists.is_empty() { byline.first().and_then(|x| x["text"].as_str()).unwrap_or_default().to_string() } else { artists.join(", ") };
+                    out.push(Track {
+                        id: format!("yt:{vid}"),
+                        source: "youtube".into(),
+                        title: text(&r["title"]),
+                        artist,
+                        album: album.and_then(|a| a["text"].as_str()).unwrap_or("YouTube Music").to_string(),
+                        album_id: album.and_then(|a| a["navigationEndpoint"]["browseEndpoint"]["browseId"].as_str()).map(|b| format!("ytm:{b}")),
+                        track_no: None,
+                        duration: r["lengthText"]["runs"][0]["text"].as_str().map(parse_len).unwrap_or(0.0),
+                        cover: r["thumbnail"]["thumbnails"].as_array().and_then(|a| a.last()).and_then(|t| t["url"].as_str()).map(big),
+                        stream_url: vid.to_string(),
+                        formats: vec![Format { kind: "yt".into(), label: "YouTube".into(), url: vid.to_string(), size: None }],
+                        license: Some("Se escucha desde YouTube Music; no se descarga".into()),
+                        downloadable: false,
+                        local_path: None,
+                        genre: None,
+                        live: false,
+                    });
+                }
+                return;
+            }
+            m.values().for_each(|x| panel(x, out));
+        }
+        Value::Array(a) => a.iter().for_each(|x| panel(x, out)),
+        _ => {}
+    }
+}
+
+pub async fn radio(client: &Client, video_id: &str) -> Result<Vec<Track>> {
+    let v = call(client, "next", json!({ "videoId": video_id, "playlistId": format!("RDAMVM{video_id}"), "isAudioOnly": true })).await?;
+    let mut out = Vec::new();
+    panel(&v["contents"], &mut out);
+    out.retain(|t| t.stream_url != video_id);
+    Ok(out)
 }

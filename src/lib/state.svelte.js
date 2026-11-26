@@ -15,7 +15,9 @@ export const ui = $state({
   importing: null,
   scanning: null,
   lyrics: false,
+  fpMode: 'cover',
   update: null,
+  sleep: null,
   searchCache: { q: '', results: null }
 })
 

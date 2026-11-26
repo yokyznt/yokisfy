@@ -3,6 +3,7 @@
   import Cover from '../components/Cover.svelte'
   import TrackList from '../components/TrackList.svelte'
   import AlbumGrid from '../components/AlbumGrid.svelte'
+  import ArtistGrid from '../components/ArtistGrid.svelte'
   import Stations from '../components/Stations.svelte'
   import { api } from '../lib/api.js'
   import { ui, go } from '../lib/state.svelte.js'
@@ -73,6 +74,7 @@
       <h2 class="h2">{s.title}</h2>
       {#if s.tracks.length && s.tracks[0].live}<Stations stations={s.tracks} limit={12} />{:else if s.tracks.length}<TrackList tracks={s.tracks} limit={8} />{/if}
       {#if s.albums.length}<AlbumGrid albums={s.albums} limit={12} />{/if}
+      {#if s.artists?.length}<ArtistGrid artists={s.artists} limit={12} />{/if}
     </section>
   {/each}
 </div>

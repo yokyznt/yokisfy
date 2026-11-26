@@ -4,6 +4,7 @@ mod keys;
 pub mod download;
 pub mod library;
 pub mod lyrics;
+pub mod colors;
 pub mod model;
 pub mod net;
 pub mod pc;
@@ -158,6 +159,8 @@ impl Core {
             audius::album(&self.client, au).await?
         } else if let Some(yt) = id.strip_prefix("ytm:") {
             ytmusic::album(&self.client, yt).await?
+        } else if let Some(pl) = id.strip_prefix("ytpl:") {
+            ytmusic::playlist_album(&self.client, pl).await?
         } else {
             return Err(Error::Msg("Fuente desconocida".into()));
         };
@@ -168,7 +171,8 @@ impl Core {
     pub async fn home(&self) -> Vec<Section> {
         let jid = self.jamendo_id();
         let country = locale_country();
-        let (live, net, jm_tracks, jm_albums, au_tracks, au_lists, radios) = tokio::join!(
+        let (yh, live, net, jm_tracks, jm_albums, au_tracks, au_lists, radios) = tokio::join!(
+            ytmusic::home(&self.client),
             archive::browse(&self.client, "etree", 14),
             archive::browse(&self.client, "netlabels", 14),
             async {
@@ -188,17 +192,34 @@ impl Core {
             radio::popular(&self.client, country.as_deref())
         );
         let mut s = Vec::new();
-        let sec = |title: &str, albums: Vec<Album>, tracks: Vec<Track>| Section { title: title.into(), albums, tracks };
+        let sec = |title: &str, albums: Vec<Album>, tracks: Vec<Track>| Section { title: title.into(), albums, tracks, artists: vec![] };
+        if let Ok(h) = yh {
+            if !h.trending.is_empty() {
+                s.push(sec("Lo más escuchado ahora", vec![], self.lib.resolve(h.trending)));
+            }
+            if !h.artists.is_empty() {
+                s.push(Section { title: "Artistas del momento".into(), albums: vec![], tracks: vec![], artists: h.artists });
+            }
+            if !h.releases.is_empty() {
+                s.push(sec("Estrenos", h.releases, vec![]));
+            }
+            if !h.top.is_empty() {
+                s.push(sec("Listas de éxitos", h.top, vec![]));
+            }
+            if !h.playlists.is_empty() {
+                s.push(sec("Playlists para ti", h.playlists, vec![]));
+            }
+        }
         if let Ok(t) = au_tracks.map(|t| t.into_iter().take(20).collect::<Vec<_>>()).map(|t| self.lib.resolve(t)) {
             if !t.is_empty() {
-                s.push(sec("En tendencia esta semana", vec![], t));
+                s.push(sec("Música libre en tendencia", vec![], t));
             }
         }
         if let Some(t) = jm_tracks.filter(|t| !t.is_empty()) {
             s.push(sec("Lo más escuchado en Jamendo", vec![], self.lib.resolve(t)));
         }
         if let Some(a) = au_lists.ok().filter(|a| !a.is_empty()) {
-            s.push(sec("Playlists populares", a, vec![]));
+            s.push(sec("Playlists libres populares", a, vec![]));
         }
         if let Some(a) = jm_albums.filter(|a| !a.is_empty()) {
             s.push(sec("Álbumes en tendencia", a, vec![]));
@@ -238,6 +259,14 @@ impl Core {
 
     pub async fn radio_for(&self, seed: &Track, exclude: &[String]) -> Vec<Track> {
         let mut pool: Vec<Track> = Vec::new();
+        if seed.source == "youtube" {
+            let mut seen: std::collections::HashSet<String> = exclude.iter().cloned().collect();
+            seen.insert(seed.id.clone());
+            let out: Vec<Track> = ytmusic::radio(&self.client, &seed.stream_url).await.unwrap_or_default().into_iter().filter(|t| seen.insert(t.id.clone())).take(25).collect();
+            if !out.is_empty() {
+                return self.lib.resolve(out);
+            }
+        }
         if seed.live {
             if let Some(g) = &seed.genre {
                 pool = radio::search(&self.client, g).await.unwrap_or_default();
@@ -346,6 +375,10 @@ impl Core {
         t.local_path = Some(p);
         self.player.update(t.clone());
         Ok(t)
+    }
+
+    pub async fn palette(&self, url: &str) -> Result<Vec<String>> {
+        colors::palette(&self.client, url).await
     }
 
     pub async fn lyrics(&self, t: &Track) -> Result<Option<lyrics::Lyrics>> {
@@ -504,7 +537,7 @@ async fn futures_join<F: std::future::Future>(futs: impl Iterator<Item = F>) -> 
     out
 }
 
-fn locale_country() -> Option<String> {
+pub fn locale_country() -> Option<String> {
     let l = std::env::var("YOKISFY_COUNTRY").ok().or_else(sys_locale)?;
     let c = l.split(['-', '_']).nth(1)?.chars().take(2).collect::<String>().to_uppercase();
     (c.len() == 2).then_some(c)

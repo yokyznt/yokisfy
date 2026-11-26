@@ -54,6 +54,10 @@
   }
   let version = $state('')
   getVersion().then((v) => (version = v))
+  function report() {
+    const body = `**Qué pasó:**\n\n**Qué esperabas:**\n\n---\nYokisfy ${version} · ${ui.settings.mobile ? 'Android' : 'Windows'} · ${navigator.userAgent}`
+    openUrl(`https://github.com/yokyznt/yokisfy/issues/new?body=${encodeURIComponent(body)}`)
+  }
 </script>
 
 <div class="page narrow">
@@ -148,6 +152,7 @@
     <div class="dir">
       <button class="btn ghost" onclick={() => checkUpdate(true)}>Buscar actualizaciones</button>
       <button class="link" onclick={() => openUrl('https://github.com/yokyznt/yokisfy/releases/latest')}>Página de descargas</button>
+      <button class="link" onclick={report}>Reportar un problema</button>
     </div>
   </section>
 </div>

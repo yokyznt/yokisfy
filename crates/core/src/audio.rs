@@ -10,6 +10,18 @@ use symphonia::core::io::{MediaSource, MediaSourceStream, MediaSourceStreamOptio
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::core::units::Time;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+
+pub static LEVELS: [AtomicU32; 3] = [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)];
+pub static LEVELS_AT: AtomicU64 = AtomicU64::new(0);
+
+pub fn levels() -> [f32; 3] {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    if now.saturating_sub(LEVELS_AT.load(Ordering::Relaxed)) > 400 {
+        return [0.0; 3];
+    }
+    [0, 1, 2].map(|i| f32::from_bits(LEVELS[i].load(Ordering::Relaxed)))
+}
 
 struct Sized<R> {
     inner: R,
@@ -47,6 +59,7 @@ pub struct Stream {
     channels: u16,
     rate: u32,
     total: Option<Duration>,
+    meter: [f32; 6],
 }
 
 fn err(e: impl std::fmt::Display) -> SeekError {
@@ -81,6 +94,7 @@ impl Stream {
             format,
             decoder,
             buf: Vec::new(),
+            meter: [0.0; 6],
             idx: 0,
             total,
         };
@@ -131,6 +145,26 @@ impl Iterator for Stream {
         }
         let s = self.buf[self.idx];
         self.idx += 1;
+        let m = &mut self.meter;
+        m[0] += 0.02 * (s - m[0]);
+        let hi = s - m[1];
+        m[1] = s;
+        m[2] += s * s;
+        m[3] += m[0] * m[0];
+        m[4] += hi * hi;
+        m[5] += 1.0;
+        if m[5] >= 2048.0 {
+            let n = m[5];
+            let vals = [(m[2] / n).sqrt(), (m[3] / n).sqrt() * 2.2, (m[4] / n).sqrt() * 1.4];
+            for (i, v) in vals.iter().enumerate() {
+                LEVELS[i].store(v.min(1.5).to_bits(), Ordering::Relaxed);
+            }
+            LEVELS_AT.store(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0), Ordering::Relaxed);
+            m[2] = 0.0;
+            m[3] = 0.0;
+            m[4] = 0.0;
+            m[5] = 0.0;
+        }
         Some(s)
     }
 }

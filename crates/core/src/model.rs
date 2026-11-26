@@ -86,6 +86,8 @@ pub struct Section {
     pub title: String,
     pub albums: Vec<Album>,
     pub tracks: Vec<Track>,
+    #[serde(default)]
+    pub artists: Vec<crate::sources::ytmusic::Artist>,
 }
 
 #[derive(thiserror::Error, Debug)]

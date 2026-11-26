@@ -5,10 +5,94 @@ use serde_json::Value;
 
 #[derive(Serialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
+pub struct Line {
+    pub start: f64,
+    pub end: f64,
+    pub text: String,
+    pub words: Vec<(f64, String)>,
+    pub exact: bool,
+}
+
+#[derive(Serialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Lyrics {
     pub synced: Vec<(f64, String)>,
+    pub lines: Vec<Line>,
     pub plain: Option<String>,
     pub instrumental: bool,
+}
+
+fn unquote(v: &str) -> String {
+    let v = v.trim();
+    if v.len() >= 2 && v.starts_with('\'') && v.ends_with('\'') {
+        v[1..v.len() - 1].replace("''", "'")
+    } else if v.len() >= 2 && v.starts_with('"') && v.ends_with('"') {
+        serde_json::from_str::<String>(v).unwrap_or_else(|_| v[1..v.len() - 1].to_string())
+    } else {
+        v.to_string()
+    }
+}
+
+fn parse_file(f: &str) -> Vec<Line> {
+    let mut lines: Vec<Line> = Vec::new();
+    let mut in_lines = false;
+    for raw in f.lines() {
+        if raw.starts_with("lines:") {
+            in_lines = true;
+            continue;
+        }
+        if !in_lines {
+            continue;
+        }
+        if !raw.starts_with(' ') && !raw.starts_with('-') {
+            break;
+        }
+        let t = raw.trim_start();
+        let indent = raw.len() - t.len();
+        if indent == 0 {
+            if let Some(v) = t.strip_prefix("- text:") {
+                lines.push(Line { text: unquote(v), exact: true, ..Default::default() });
+            }
+            continue;
+        }
+        let Some(l) = lines.last_mut() else { continue };
+        if indent == 2 {
+            if let Some(v) = t.strip_prefix("start_ms:") {
+                l.start = v.trim().parse::<f64>().unwrap_or(0.0) / 1000.0;
+            } else if let Some(v) = t.strip_prefix("end_ms:") {
+                l.end = v.trim().parse::<f64>().unwrap_or(0.0) / 1000.0;
+            } else if let Some(v) = t.strip_prefix("- text:") {
+                l.words.push((0.0, unquote(v)));
+            }
+        } else if let Some(v) = t.strip_prefix("start_ms:") {
+            if let Some(w) = l.words.last_mut() {
+                w.0 = v.trim().parse::<f64>().unwrap_or(0.0) / 1000.0;
+            }
+        }
+    }
+    lines.retain(|l| !l.text.trim().is_empty() || !l.words.is_empty());
+    lines
+}
+
+fn estimate(synced: &[(f64, String)], total: f64) -> Vec<Line> {
+    let mut out = Vec::new();
+    for (i, (start, text)) in synced.iter().enumerate() {
+        let next = synced.get(i + 1).map(|n| n.0).unwrap_or(if total > *start { total } else { start + 5.0 });
+        let span = (next - start).min(1.0 + text.chars().count() as f64 * 0.09).max(0.4);
+        let parts: Vec<String> = text.split_inclusive(' ').map(String::from).collect();
+        let chars: f64 = parts.iter().map(|p| p.trim().chars().count().max(1) as f64).sum::<f64>().max(1.0);
+        let mut acc = 0.0;
+        let words = parts
+            .iter()
+            .map(|p| {
+                let w = (start + span * acc / chars, p.clone());
+                acc += p.trim().chars().count().max(1) as f64;
+                w
+            })
+            .collect();
+        out.push(Line { start: *start, end: start + span, text: text.clone(), words, exact: false });
+    }
+    out
 }
 
 fn clean_title(t: &str) -> String {
@@ -35,8 +119,23 @@ fn parse(v: &Value) -> Lyrics {
         }
     }
     synced.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    let total = v["duration"].as_f64().unwrap_or(0.0);
+    let mut lines = v["lyricsfile"].as_str().map(parse_file).unwrap_or_default();
+    if lines.is_empty() || lines.iter().all(|l| l.words.is_empty()) {
+        lines = estimate(&synced, total);
+    } else {
+        for l in lines.iter_mut() {
+            if l.words.is_empty() {
+                l.words = vec![(l.start, l.text.clone())];
+            }
+            if l.end <= l.start {
+                l.end = l.start + 3.0;
+            }
+        }
+    }
     Lyrics {
         synced,
+        lines,
         plain: v["plainLyrics"].as_str().filter(|s| !s.trim().is_empty()).map(String::from),
         instrumental: v["instrumental"].as_bool().unwrap_or(false),
     }

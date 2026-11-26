@@ -180,6 +180,16 @@ async fn download(app: AppHandle, core: C<'_>, track: Track, kind: Option<String
 }
 
 #[tauri::command]
+fn levels() -> [f32; 3] {
+    yokisfy_core::audio::levels()
+}
+
+#[tauri::command]
+async fn palette(core: C<'_>, url: String) -> R<Vec<String>> {
+    core.palette(&url).await
+}
+
+#[tauri::command]
 async fn lyrics(core: C<'_>, track: Track) -> R<Option<yokisfy_core::lyrics::Lyrics>> {
     core.lyrics(&track).await
 }
@@ -439,7 +449,7 @@ pub fn run() {
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, artist, latest_release, lyrics, free_versions, download_as, ext_progress, ext_ended, ext_failed
+            import_spotify, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");

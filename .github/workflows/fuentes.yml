@@ -1,0 +1,40 @@
+name: Salud de las fuentes
+
+on:
+  schedule:
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - "crates/core/src/sources/**"
+      - "crates/core/tests/fuentes.rs"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  fuentes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - id: test
+        run: cargo test -p yokisfy-core --test fuentes 2>&1 | tee fuentes.log
+        continue-on-error: true
+      - if: steps.test.outcome == 'failure' && github.event_name != 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          body="$(grep -E 'panicked|FAILED|failed' fuentes.log | head -40)"
+          n=$(gh issue list --state open --label fuentes --json number -q '.[0].number')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body "Sigue fallando $(date -u +%F):"$'\n\n```\n'"$body"$'\n```'
+          else
+            gh label create fuentes --color B60205 --force
+            gh issue create --title "Una fuente de música dejó de funcionar" --label fuentes --body "La revisión diaria encontró fallas:"$'\n\n```\n'"$body"$'\n```\n\n'"Corre \`cargo test -p yokisfy-core --test fuentes\` para verlo."
+          fi
+      - if: steps.test.outcome == 'failure'
+        run: exit 1
