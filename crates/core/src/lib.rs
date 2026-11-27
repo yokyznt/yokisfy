@@ -359,6 +359,17 @@ impl Core {
         tokio::task::spawn_blocking(|| pc::discover(std::time::Duration::from_millis(1500))).await.unwrap_or_default().into_iter().filter(|s| s.party && seen.insert(s.url.clone())).collect()
     }
 
+    pub async fn party_by_code(&self, code: &str) -> Result<pc::PcServer> {
+        let code = pc::clean_code(code);
+        let url = pc::lookup(&self.client, &format!("fiesta{code}")).await.ok_or_else(|| Error::Msg("No encontré esa fiesta. Revisa el código y que la fiesta siga abierta.".into()))?;
+        let s = pc::PcServer { name: String::new(), url: url.clone(), user: String::new(), password: String::new(), party: true };
+        let now = pc::call(&self.client, &s, "party_now", &serde_json::Value::Null).await.map_err(|_| Error::Msg("La fiesta no respondió. Puede que el anfitrión la haya cerrado.".into()))?;
+        if now.get("on").and_then(|v| v.as_bool()) != Some(true) {
+            return Err(Error::Msg("Esa fiesta está cerrada.".into()));
+        }
+        Ok(pc::PcServer { name: now.get("name").and_then(|v| v.as_str()).unwrap_or("Fiesta").to_string(), ..s })
+    }
+
     pub async fn party_call(&self, url: &str, action: &str, body: serde_json::Value) -> Result<serde_json::Value> {
         let s = pc::PcServer { name: String::new(), url: url.to_string(), user: String::new(), password: String::new(), party: true };
         pc::call(&self.client, &s, action, &body).await

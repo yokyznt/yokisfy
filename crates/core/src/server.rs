@@ -62,6 +62,7 @@ pub async fn start(lib: Arc<Library>, password: String, remote: Option<Remote>) 
     let app = Router::new()
         .route("/rest/{method}", any(handle))
         .route("/yk/{action}", any(yk))
+        .route("/party/audio", any(party_audio))
         .route("/fiesta", any(|| async { axum::response::Html(include_str!("fiesta.html")) }))
         .route("/", any(|| async { Redirect::temporary("/fiesta") }))
         .with_state(ctx.clone());
@@ -318,6 +319,47 @@ async fn yk(State(ctx): State<Arc<Ctx>>, axum::extract::Path(action): axum::extr
     }
     let out = remote(action, arg).await;
     ([(header::CONTENT_TYPE, "application/json; charset=utf-8"), (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")], out.to_string()).into_response()
+}
+
+static PROXY: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::new(|| reqwest::Client::builder().user_agent("Mozilla/5.0 Yokisfy").build().unwrap_or_default());
+
+async fn party_audio(State(ctx): State<Arc<Ctx>>, axum::extract::RawQuery(raw): axum::extract::RawQuery, req: Request) -> Response {
+    if !PARTY.load(std::sync::atomic::Ordering::Relaxed) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let q = url_params(raw.as_deref().unwrap_or(""));
+    let Some(remote) = ctx.remote.clone() else { return StatusCode::NOT_FOUND.into_response() };
+    let v = remote("party_track".into(), json!({ "id": q.get("id").cloned().unwrap_or_default() })).await;
+    let Ok(t) = serde_json::from_value::<Track>(v) else { return StatusCode::NOT_FOUND.into_response() };
+    if let Some(p) = t.local_path.as_deref().filter(|p| Path::new(p).exists()) {
+        let mime = mime(&suffix(&t));
+        return match ServeFile::new_with_mime(p, &mime.parse().unwrap()).oneshot(req).await {
+            Ok(r) => {
+                let mut r = r.map(Body::new).into_response();
+                r.headers_mut().insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, header::HeaderValue::from_static("*"));
+                r
+            }
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        };
+    }
+    if !t.stream_url.starts_with("http") {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let mut r = PROXY.get(&t.stream_url);
+    if let Some(range) = req.headers().get(header::RANGE).and_then(|v| v.to_str().ok()) {
+        r = r.header(reqwest::header::RANGE, range);
+    }
+    if let Some(rf) = crate::net::referer(&t.stream_url) {
+        r = r.header(reqwest::header::REFERER, rf);
+    }
+    let Ok(up) = r.send().await else { return StatusCode::BAD_GATEWAY.into_response() };
+    let mut b = Response::builder().status(up.status().as_u16()).header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*").header(header::ACCEPT_RANGES, "bytes");
+    for k in [reqwest::header::CONTENT_TYPE, reqwest::header::CONTENT_LENGTH, reqwest::header::CONTENT_RANGE] {
+        if let Some(v) = up.headers().get(&k).and_then(|v| v.to_str().ok()) {
+            b = b.header(k.as_str(), v);
+        }
+    }
+    b.body(Body::from_stream(up.bytes_stream())).unwrap_or_else(|_| StatusCode::BAD_GATEWAY.into_response())
 }
 
 fn authed(ctx: &Ctx, q: &HashMap<String, String>) -> bool {

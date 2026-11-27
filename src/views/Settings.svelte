@@ -68,10 +68,14 @@
     syncing = false
   }
   let srv = $state({ on: false })
+  let srvT
   async function loadSrv() {
     srv = await api.serverInfo()
+    clearTimeout(srvT)
+    if (srv.on && !srv.public && !ui.settings.mobile && ui.settings.internet !== 'off') srvT = setTimeout(loadSrv, 3000)
   }
   loadSrv()
+  $effect(() => () => clearTimeout(srvT))
   async function toggleShare() {
     await save('share_library', share ? 'off' : 'on')
     await loadSrv()
@@ -157,7 +161,9 @@
         <button class="btn ghost mono" onclick={() => copy(srv.code)} title="Copiar">{srv.code}</button>
       </div>
       <div class="set-row">
-        <span class="set-name">Conectar también por internet, aunque no estén en el mismo Wi-Fi</span>
+        <span class="set-name">Conectar también por internet, aunque no estén en el mismo Wi-Fi
+          {#if ui.settings.internet !== 'off'}<small class="set-net" class:ok={srv.public}>{srv.public ? 'Listo: tu celular te encuentra desde cualquier lugar' : srv.tunnel || 'Conectando…'}</small>{/if}
+        </span>
         <button class="switch" role="switch" aria-checked={ui.settings.internet !== 'off'} aria-label="Conectar por internet" onclick={() => save('internet', ui.settings.internet === 'off' ? 'on' : 'off')}><i></i></button>
       </div>
     {:else if ui.settings.mobile}

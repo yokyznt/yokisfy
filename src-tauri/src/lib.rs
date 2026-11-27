@@ -196,6 +196,17 @@ async fn download(app: AppHandle, core: C<'_>, track: Track, kind: Option<String
 }
 
 static LAST_STATUS: std::sync::Mutex<Option<serde_json::Value>> = std::sync::Mutex::new(None);
+static LAST_AT: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+fn now_position(status: &Option<serde_json::Value>) -> f64 {
+    let Some(s) = status else { return 0.0 };
+    let p = s.get("position").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let playing = s.get("playing").and_then(|v| v.as_bool()).unwrap_or(false) && !s.get("loading").and_then(|v| v.as_bool()).unwrap_or(false);
+    let el = LAST_AT.lock().ok().and_then(|g| *g).map(|t| t.elapsed().as_secs_f64()).unwrap_or(0.0);
+    let d = s.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let v = if playing { p + el } else { p };
+    if d > 0.0 { v.min(d) } else { v }
+}
 static LAST_QUEUE: std::sync::Mutex<Option<serde_json::Value>> = std::sync::Mutex::new(None);
 
 #[tauri::command]
@@ -357,6 +368,26 @@ async fn pc_link(core: C<'_>, code: String) -> R<yokisfy_core::pc::PcServer> {
 }
 
 static TUNNEL: std::sync::Mutex<Option<Arc<std::sync::atomic::AtomicBool>>> = std::sync::Mutex::new(None);
+static DATA_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+fn party_code(core: &Core) -> String {
+    match core.lib.setting("party_code").filter(|c| c.len() == 6) {
+        Some(c) => c,
+        None => {
+            use rand::Rng;
+            const A: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
+            let mut r = rand::thread_rng();
+            let c: String = (0..6).map(|_| A[r.gen_range(0..A.len())] as char).collect();
+            let _ = core.lib.set_setting("party_code", &c);
+            c
+        }
+    }
+}
+
+#[tauri::command]
+async fn party_join(core: C<'_>, code: String) -> R<yokisfy_core::pc::PcServer> {
+    core.party_by_code(&code).await
+}
 
 fn tunnel(core: &Core, port: Option<u16>) {
     if let Ok(mut g) = TUNNEL.lock() {
@@ -369,7 +400,19 @@ fn tunnel(core: &Core, port: Option<u16>) {
         }
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         *g = Some(stop.clone());
-        tauri::async_runtime::spawn(yokisfy_core::pc::tunnel(port, server_password(core), core.client.clone(), stop));
+        let pass = server_password(core);
+        let lib = core.lib.clone();
+        let codes: Arc<dyn Fn() -> Vec<String> + Send + Sync> = Arc::new(move || {
+            let mut v = vec![pass.clone()];
+            if lib.setting("party").as_deref() == Some("on") {
+                if let Some(c) = lib.setting("party_code").filter(|c| !c.is_empty()) {
+                    v.push(format!("fiesta{c}"));
+                }
+            }
+            v
+        });
+        let dir = DATA_DIR.get().cloned().unwrap_or_default().join("bin");
+        tauri::async_runtime::spawn(yokisfy_core::pc::tunnel(port, codes, core.client.clone(), stop, dir));
     }
 }
 
@@ -601,7 +644,14 @@ async fn set_setting(app: AppHandle, core: C<'_>, key: String, value: String) ->
     if key == "party" {
         server::PARTY.store(value == "on", std::sync::atomic::Ordering::Relaxed);
         if value == "on" {
+            let code = party_code(&core);
             apply_server(&app).await;
+            if let Some(url) = yokisfy_core::pc::public_url() {
+                let c = core.client.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = yokisfy_core::pc::announce(&c, &format!("fiesta{code}"), &url).await;
+                });
+            }
         }
     }
     Ok(())
@@ -663,7 +713,26 @@ fn remote(app: AppHandle) -> server::Remote {
                 }
                 "party_now" => {
                     let on = server::PARTY.load(std::sync::atomic::Ordering::Relaxed);
-                    json!({ "on": on, "name": server::host_name(), "track": status.as_ref().and_then(|s| s.get("track").cloned()) })
+                    let track = status.as_ref().and_then(|s| s.get("track").cloned()).filter(|t| !t.is_null());
+                    let src = track.as_ref().map(|t| {
+                        let id = t.get("id").and_then(|v| v.as_str()).unwrap_or_default();
+                        if t.get("source").and_then(|v| v.as_str()) == Some("youtube") {
+                            json!({ "yt": t.get("stream_url").and_then(|v| v.as_str()).filter(|u| !u.contains('/')).map(String::from).unwrap_or_else(|| id.trim_start_matches("yt:").to_string()) })
+                        } else {
+                            json!({ "audio": format!("/party/audio?id={}", urlencoding::encode(id)) })
+                        }
+                    });
+                    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+                    let g = |k: &str| status.as_ref().and_then(|s| s.get(k).cloned()).unwrap_or(serde_json::Value::Null);
+                    json!({ "on": on, "name": server::host_name(), "track": track, "src": src, "position": now_position(&status), "playing": g("playing"), "loading": g("loading"), "duration": g("duration"), "ts": ms })
+                }
+                "party_track" => {
+                    let id = s("id");
+                    let mut all: Vec<serde_json::Value> = status.as_ref().and_then(|s| s.get("track").cloned()).into_iter().collect();
+                    if let Some(q) = LAST_QUEUE.lock().ok().and_then(|g| g.clone()) {
+                        all.extend(q.get("tracks").and_then(|v| v.as_array()).cloned().unwrap_or_default());
+                    }
+                    all.into_iter().find(|t| t.get("id").and_then(|v| v.as_str()) == Some(id.as_str())).unwrap_or(serde_json::Value::Null)
                 }
                 "party_search" => {
                     let r = core.search(&s("q")).await;
@@ -732,7 +801,7 @@ async fn server_info(core: C<'_>, srv: State<'_, Srv>) -> R<serde_json::Value> {
     Ok(match g.as_ref() {
         Some(h) => {
             let p = server_password(&core);
-            json!({ "on": true, "url": format!("http://{}:{}", server::lan_ip().unwrap_or_else(|| "localhost".into()), h.port), "user": server::USER, "password": p, "code": format!("{}-{}", &p[..p.len() / 2], &p[p.len() / 2..]), "internet": core.lib.setting("internet").as_deref() != Some("off"), "name": server::host_name() })
+            json!({ "on": true, "url": format!("http://{}:{}", server::lan_ip().unwrap_or_else(|| "localhost".into()), h.port), "user": server::USER, "password": p, "code": format!("{}-{}", &p[..p.len() / 2], &p[p.len() / 2..]), "internet": core.lib.setting("internet").as_deref() != Some("off"), "name": server::host_name(), "public": yokisfy_core::pc::public_url(), "tunnel": yokisfy_core::pc::tunnel_state(), "party_code": core.lib.setting("party_code") })
         }
         None => json!({ "on": false }),
     })
@@ -797,6 +866,7 @@ pub fn run() {
         .plugin(tauri_plugin_yk_media::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
+            let _ = DATA_DIR.set(dir.clone());
             let h = app.handle().clone();
             let core = Core::new(
                 &dir,
@@ -808,6 +878,9 @@ pub fn run() {
                         Event::Status(s) => {
                             if let Ok(mut g) = LAST_STATUS.lock() {
                                 *g = serde_json::to_value(&s).ok();
+                            }
+                            if let Ok(mut g) = LAST_AT.lock() {
+                                *g = Some(std::time::Instant::now());
                             }
                             h.emit("player", s)
                         }
@@ -911,7 +984,7 @@ pub fn run() {
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, format_sizes, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, pc_link, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, system_outputs, spectrum, boost, get_boost, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
+            import_spotify, pc_link, party_join, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, system_outputs, spectrum, boost, get_boost, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");

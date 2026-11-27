@@ -64,6 +64,7 @@ export const api = {
   pcSync: () => call('pc_sync'),
   pcLink: (code) => call('pc_link', { code }),
   partyHosts: () => call('party_hosts'),
+  partyJoin: (code) => call('party_join', { code }),
   partyCall: (url, action, body = null) => call('party_call', { url, action, body }),
   openMini: () => call('open_mini'),
   audioOutputs: () => call('audio_outputs'),

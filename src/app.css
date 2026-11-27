@@ -4742,3 +4742,51 @@ a:focus-visible {
   position: relative;
   height: 210px;
 }
+
+.pt-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin: 10px 0;
+}
+
+.pt-code {
+  color: var(--tx-2);
+  font-size: 14px;
+}
+
+.pt-code b {
+  color: var(--tx);
+  font-size: 16px;
+  letter-spacing: 0.08em;
+}
+
+.pt-join {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 14px;
+}
+
+.pt-join .field {
+  flex: 1;
+  min-width: 0;
+  letter-spacing: 0.06em;
+}
+
+.pt-listen .set-name small {
+  display: block;
+  margin-top: 2px;
+  color: var(--ac);
+}
+
+.set-net {
+  display: block;
+  margin-top: 3px;
+  color: var(--tx-3);
+  font-size: 13px;
+}
+
+.set-net.ok {
+  color: var(--ac);
+}
