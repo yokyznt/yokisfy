@@ -370,6 +370,13 @@ async fn pc_link(core: C<'_>, code: String) -> R<yokisfy_core::pc::PcServer> {
 }
 
 static TUNNEL: std::sync::Mutex<Option<Arc<std::sync::atomic::AtomicBool>>> = std::sync::Mutex::new(None);
+fn discord_state() -> &'static str {
+    #[cfg(desktop)]
+    return presence::state();
+    #[cfg(not(desktop))]
+    ""
+}
+
 fn discord_ok() -> bool {
     #[cfg(desktop)]
     return presence::available();
@@ -842,7 +849,7 @@ async fn server_info(core: C<'_>, srv: State<'_, Srv>) -> R<serde_json::Value> {
     Ok(match g.as_ref() {
         Some(h) => {
             let p = server_password(&core);
-            json!({ "on": true, "url": format!("http://{}:{}", server::lan_ip().unwrap_or_else(|| "localhost".into()), h.port), "user": server::USER, "password": p, "code": format!("{}-{}", &p[..p.len() / 2], &p[p.len() / 2..]), "internet": core.lib.setting("internet").as_deref() != Some("off"), "name": server::host_name(), "public": yokisfy_core::pc::public_url(), "tunnel": yokisfy_core::pc::tunnel_state(), "party_code": core.lib.setting("party_code"), "discord": cfg!(desktop) && discord_ok() })
+            json!({ "on": true, "url": format!("http://{}:{}", server::lan_ip().unwrap_or_else(|| "localhost".into()), h.port), "user": server::USER, "password": p, "code": format!("{}-{}", &p[..p.len() / 2], &p[p.len() / 2..]), "internet": core.lib.setting("internet").as_deref() != Some("off"), "name": server::host_name(), "public": yokisfy_core::pc::public_url(), "tunnel": yokisfy_core::pc::tunnel_state(), "party_code": core.lib.setting("party_code"), "discord": cfg!(desktop) && discord_ok(), "discord_state": discord_state() })
         }
         None => json!({ "on": false }),
     })

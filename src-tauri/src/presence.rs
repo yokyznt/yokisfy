@@ -6,8 +6,20 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const BUILT_IN: &str = match option_env!("YOKISFY_DISCORD_ID") {
     Some(v) => v,
-    None => "",
+    None => "1576007810498568382",
 };
+const ICON: &str = "https://raw.githubusercontent.com/yokyznt/yokisfy/main/src-tauri/icons/128x128.png";
+static STATE: Mutex<&'static str> = Mutex::new("");
+
+fn set_state(s: &'static str) {
+    if let Ok(mut g) = STATE.lock() {
+        *g = s;
+    }
+}
+
+pub fn state() -> &'static str {
+    STATE.lock().map(|g| *g).unwrap_or("")
+}
 static APP_ID: Mutex<String> = Mutex::new(String::new());
 
 pub fn set_app_id(id: Option<String>) {
@@ -49,7 +61,7 @@ fn now_ms() -> i64 {
 }
 
 fn show(c: &mut DiscordIpcClient, i: &Info) -> bool {
-    let large = i.cover.as_deref().filter(|u| u.starts_with("https://") && u.len() < 256).unwrap_or("yokisfy");
+    let large = i.cover.as_deref().filter(|u| u.starts_with("https://") && u.len() < 256).unwrap_or(ICON);
     let mut ts = Timestamps::new().start(i.start);
     if let Some(e) = i.end {
         ts = ts.end(e);
@@ -61,7 +73,7 @@ fn show(c: &mut DiscordIpcClient, i: &Info) -> bool {
         .status_display_type(StatusDisplayType::Details)
         .details(title.as_str())
         .state(artist.as_str())
-        .assets(Assets::new().large_image(large).large_text("Yokisfy"))
+        .assets(Assets::new().large_image(large).large_text("Yokisfy").small_image(ICON).small_text("Yokisfy"))
         .timestamps(ts)
         .buttons(vec![Button::new("Descargar Yokisfy", "https://github.com/yokyznt/yokisfy/releases/latest")]);
     c.set_activity(a).is_ok()
@@ -92,6 +104,7 @@ fn worker(rx: std::sync::mpsc::Receiver<Option<Info>>) {
             }
             let mut c = DiscordIpcClient::new(app_id());
             if c.connect().is_err() {
+                set_state("no_discord");
                 continue;
             }
             client = Some(c);
@@ -103,7 +116,9 @@ fn worker(rx: std::sync::mpsc::Receiver<Option<Info>>) {
         };
         if ok {
             dirty = false;
+            set_state(if want.is_some() { "showing" } else { "idle" });
         } else {
+            set_state("error");
             let _ = c.close();
             client = None;
             dirty = true;

@@ -112,7 +112,7 @@
     </div>
     {#if !ui.settings.mobile}
       <div class="set-row">
-        <span class="set-name">Mostrar en Discord lo que escucho<small class="set-net">En tu perfil sale «Escuchando …» con la portada</small></span>
+        <span class="set-name">Mostrar en Discord lo que escucho<small class="set-net" class:ok={srv.discord_state === 'showing'}>{srv.discord_state === 'showing' ? 'Listo: tu perfil muestra lo que suena' : srv.discord_state === 'no_discord' ? 'Abre Discord en esta PC para que se vea' : 'En tu perfil sale «Escuchando …» con la portada'}</small></span>
         <button class="switch" role="switch" aria-checked={ui.settings.discord !== 'off'} aria-label="Mostrar en Discord" onclick={() => save('discord', ui.settings.discord === 'off' ? 'on' : 'off')}><i></i></button>
       </div>
       {#if ui.settings.discord !== 'off' && srv.discord === false}
