@@ -92,6 +92,28 @@ impl Core {
             })
     }
 
+    pub async fn quick_search(&self, q: &str) -> serde_json::Value {
+        let nq: Vec<String> = q.to_lowercase().split_whitespace().map(String::from).collect();
+        let mut seen = std::collections::HashSet::new();
+        let local: Vec<Track> = self
+            .lib
+            .recent(400)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|t| {
+                let hay = format!("{} {}", t.title, t.artist).to_lowercase();
+                !nq.is_empty() && nq.iter().all(|w| hay.contains(w.as_str()))
+            })
+            .filter(|t| seen.insert(t.id.clone()))
+            .take(3)
+            .collect();
+        let (tracks, artists) = ytmusic::quick(&self.client, q).await.unwrap_or_default();
+        let mut all = local.clone();
+        all.extend(self.lib.resolve(tracks).into_iter().filter(|t| seen.insert(t.id.clone())));
+        all.truncate(8);
+        serde_json::json!({ "q": q, "tracks": all, "local": local.len(), "artists": artists })
+    }
+
     pub async fn search(&self, q: &str) -> SearchResults {
         let jid = self.jamendo_id();
         let (ia, jm, au, rd, yt, fr) = tokio::join!(
@@ -182,6 +204,15 @@ impl Core {
     }
 
     pub async fn home(&self) -> Vec<Section> {
+        let (personal, mx) = tokio::join!(self.personal(), self.mixes());
+        if !personal.is_empty() {
+            let mut out = personal;
+            if !mx.is_empty() {
+                let at = out.len().min(1);
+                out.insert(at, Section { title: "Hecho para ti".into(), albums: mx, tracks: vec![], artists: vec![] });
+            }
+            return out;
+        }
         let jid = self.jamendo_id();
         let country = locale_country();
         let (yh, live, net, jm_tracks, jm_albums, au_tracks, au_lists, radios) = tokio::join!(

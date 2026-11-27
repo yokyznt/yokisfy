@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
+static PERSONAL: std::sync::Mutex<Option<(String, i64, Vec<Section>)>> = std::sync::Mutex::new(None);
 static MIXES: Mutex<Option<(i64, HashMap<String, Vec<Track>>)>> = Mutex::new(None);
 
 fn now() -> i64 {
@@ -93,6 +94,93 @@ impl Core {
             "hours": hours,
             "perDay": per_day,
         })
+    }
+
+    pub fn taste(&self) -> Vec<(String, Track)> {
+        let t0 = now();
+        let plays = self.lib.plays(t0 - 21 * 86400).unwrap_or_default();
+        let mut m: HashMap<String, (f64, Track, i64)> = HashMap::new();
+        for (t, at) in plays {
+            if t.live || t.artist.trim().is_empty() {
+                continue;
+            }
+            let w = (-((t0 - at).max(0) as f64) / (2.5 * 86400.0)).exp();
+            let e = m.entry(first_artist(&t.artist).to_lowercase()).or_insert((0.0, t.clone(), at));
+            e.0 += w;
+            if at >= e.2 {
+                e.1 = t;
+                e.2 = at;
+            }
+        }
+        let mut v: Vec<(f64, Track)> = m.into_values().map(|(w, t, _)| (w, t)).collect();
+        v.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        v.into_iter().take(3).map(|(_, t)| (first_artist(&t.artist), t)).collect()
+    }
+
+    pub async fn personal(&self) -> Vec<Section> {
+        let taste = self.taste();
+        if taste.is_empty() {
+            return vec![];
+        }
+        let key = taste.iter().map(|(a, _)| a.as_str()).collect::<Vec<_>>().join("|");
+        if let Some((k, at, s)) = PERSONAL.lock().ok().and_then(|g| g.clone()) {
+            if k == key && now() - at < 1200 {
+                return s;
+            }
+        }
+        let details = futures_util::future::join_all(taste.iter().map(|(a, _)| ytmusic::artist_by_name(&self.client, a))).await;
+        let radios = futures_util::future::join_all(taste.iter().map(|(_, t)| self.radio_for(t, &[]))).await;
+        let mut out = Vec::new();
+        let mut seen = HashSet::new();
+        let sec = |title: String, albums: Vec<Album>, tracks: Vec<Track>, artists: Vec<ytmusic::Artist>| Section { title, albums, tracks, artists };
+        for (i, ((name, _), (d, r))) in taste.iter().zip(details.into_iter().zip(radios)).enumerate() {
+            let d = d.ok();
+            let name = d.as_ref().map(|d| d.artist.name.clone()).unwrap_or_else(|| name.clone());
+            let mine = first_artist(&name).to_lowercase();
+            let mut from_radio: Vec<ytmusic::Artist> = Vec::new();
+            let mut an = HashSet::new();
+            for t in &r {
+                let a = first_artist(&t.artist);
+                let k = a.to_lowercase();
+                if k != mine && !k.is_empty() && !taste.iter().any(|(x, _)| x.to_lowercase() == k) && an.insert(k) {
+                    from_radio.push(ytmusic::Artist { id: a.clone(), name: a, cover: t.cover.clone(), subtitle: None });
+                }
+            }
+            let radio: Vec<Track> = r.into_iter().filter(|t| seen.insert(t.id.clone())).take(20).collect();
+            if !radio.is_empty() {
+                out.push(sec(format!("Porque escuchas {name}"), vec![], self.lib.resolve(radio), vec![]));
+            }
+            if let Some(d) = d {
+                if i == 0 {
+                    let top: Vec<Track> = d.top.into_iter().filter(|t| seen.insert(t.id.clone())).take(12).collect();
+                    if !top.is_empty() {
+                        out.push(sec(format!("Lo mejor de {name}"), vec![], self.lib.resolve(top), vec![]));
+                    }
+                    let mut albums = d.albums;
+                    albums.extend(d.singles);
+                    if !albums.is_empty() {
+                        out.push(sec(format!("Discografía de {name}"), albums.into_iter().take(14).collect(), vec![], vec![]));
+                    }
+                }
+                let mut rel = d.related;
+                if rel.is_empty() {
+                    rel = std::mem::take(&mut from_radio);
+                }
+                let rel: Vec<ytmusic::Artist> = rel.into_iter().filter(|a| seen.insert(format!("ar:{}", a.name.to_lowercase()))).take(12).collect();
+                if !rel.is_empty() {
+                    out.push(sec(format!("Artistas parecidos a {name}"), vec![], vec![], rel));
+                }
+            } else {
+                let rel: Vec<ytmusic::Artist> = from_radio.into_iter().filter(|a| seen.insert(format!("ar:{}", a.name.to_lowercase()))).take(12).collect();
+                if !rel.is_empty() {
+                    out.push(sec(format!("Artistas parecidos a {name}"), vec![], vec![], rel));
+                }
+            }
+        }
+        if let Ok(mut g) = PERSONAL.lock() {
+            *g = Some((key, now(), out.clone()));
+        }
+        out
     }
 
     pub async fn mixes(&self) -> Vec<Album> {

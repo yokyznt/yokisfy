@@ -13,6 +13,7 @@ export async function call(cmd, args = {}) {
 
 export const api = {
   search: (q) => call('search', { q }),
+  quickSearch: (q) => call('quick_search', { q }),
   album: (id) => call('album', { id }),
   artist: (id) => call('artist', { id }),
   home: () => call('home'),

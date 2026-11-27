@@ -5046,3 +5046,128 @@ a:focus-visible {
     animation: none;
   }
 }
+
+.top-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  pointer-events: auto;
+}
+
+.top-wrap .top-search {
+  width: 100%;
+}
+
+.qs {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 300;
+  display: grid;
+  max-height: min(70vh, 620px);
+  overflow-y: auto;
+  padding: 8px;
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--bg) 94%, #fff);
+  backdrop-filter: blur(24px);
+  border: 1px solid color-mix(in oklab, var(--tx) 10%, transparent);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  animation: qs-in 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes qs-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.qs-row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--tx);
+  text-align: left;
+  cursor: pointer;
+}
+
+.qs-row > svg {
+  opacity: 0;
+  color: var(--ac);
+}
+
+.qs-row.on {
+  background: color-mix(in oklab, var(--tx) 9%, transparent);
+}
+
+.qs-row.on > svg {
+  opacity: 1;
+}
+
+.qs-t {
+  display: grid;
+  min-width: 0;
+}
+
+.qs-t b,
+.qs-t small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qs-t b {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.qs-t small {
+  color: var(--tx-2);
+  font-size: 13px;
+}
+
+.qs-empty {
+  margin: 0;
+  padding: 12px;
+  color: var(--tx-2);
+}
+
+.qs-all {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 0;
+  border-top: 1px solid color-mix(in oklab, var(--tx) 8%, transparent);
+  background: none;
+  color: var(--tx-2);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qs-all:hover {
+  color: var(--tx);
+}
+
+.spin.sm {
+  width: 16px;
+  height: 16px;
+}
+
+.top {
+  position: relative;
+  z-index: 60;
+  overflow: visible;
+}
+
+.top-mid {
+  overflow: visible;
+}

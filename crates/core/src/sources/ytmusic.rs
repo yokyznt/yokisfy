@@ -280,6 +280,29 @@ async fn search_kind(client: &Client, q: &str, params: &str) -> Result<Vec<Value
     Ok(out)
 }
 
+pub async fn quick(client: &Client, q: &str) -> Result<(Vec<Track>, Vec<Artist>)> {
+    let (s, r) = tokio::join!(search_kind(client, q, SONGS), search_kind(client, q, ARTISTS));
+    if let (Err(e), Err(_)) = (&s, &r) {
+        return Err(Error::Msg(e.to_string()));
+    }
+    let nq = norm(q);
+    let words: Vec<String> = nq.split(' ').filter(|w| !w.is_empty()).map(String::from).collect();
+    let mut ranked: Vec<(bool, usize, Track)> = s
+        .unwrap_or_default()
+        .iter()
+        .enumerate()
+        .filter_map(|(i, r)| {
+            let t = song(r, None)?;
+            let hay = norm(&format!("{} {} {}", t.title, t.artist, t.album));
+            let hit = words.iter().all(|w| hay.split(' ').any(|h| h.starts_with(w.as_str())));
+            Some((hit, i, t))
+        })
+        .collect();
+    ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    let artists: Vec<Artist> = r.unwrap_or_default().iter().filter_map(artist_item).take(3).collect();
+    Ok((ranked.into_iter().map(|x| x.2).take(10).collect(), artists))
+}
+
 pub async fn search(client: &Client, q: &str) -> Result<(Vec<Track>, Vec<Album>, Vec<Artist>)> {
     let (s, a, r) = tokio::join!(search_kind(client, q, SONGS), search_kind(client, q, ALBUMS), search_kind(client, q, ARTISTS));
     if let (Err(e), Err(_), Err(_)) = (&s, &a, &r) {

@@ -15,6 +15,7 @@
     run(v)
   })
   let results = $state(ui.searchCache.results)
+  let quick = $state(null)
   let loading = $state(false)
   let showAll = $state(false)
   let input = $state()
@@ -33,6 +34,10 @@
       ui.searchCache = { q: '', results: null }
       return
     }
+    const mq = seq + 1
+    api.quickSearch(v).then((r) => {
+      if (seq <= mq && r.q === v) quick = r
+    }).catch(() => {})
     timer = setTimeout(async () => {
       const my = ++seq
       loading = true
@@ -40,6 +45,7 @@
         const r = await api.search(v)
         if (my !== seq) return
         results = r
+        quick = null
         showAll = false
         ui.searchCache = { q: v, results: r }
       } finally {
@@ -62,7 +68,13 @@
     {#if loading}<span class="spin"></span>{:else if q}<button class="icon-btn sm" onclick={() => { q = ''; run('') }} aria-label="Borrar"><Icon name="close" size={16} /></button>{/if}
   </div>
 
-  {#if !results}
+  {#if quick && (loading || !results || ui.searchCache.q !== q.trim())}
+    <section class="sec">
+      <h2 class="h2">Resultados rápidos</h2>
+      <TrackList tracks={quick.tracks} />
+      {#if quick.artists.length}<ArtistGrid artists={quick.artists} limit={4} />{/if}
+    </section>
+  {:else if !results}
     <h2 class="h2">Explorar</h2>
     <div class="genres">
       {#each genres as g, i}
