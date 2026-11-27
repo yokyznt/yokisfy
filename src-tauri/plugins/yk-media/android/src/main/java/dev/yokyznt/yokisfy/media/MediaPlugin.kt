@@ -43,6 +43,30 @@ class MediaPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     @Command
+    fun outputs(invoke: Invoke) {
+        val ok = try {
+            if (android.os.Build.VERSION.SDK_INT >= 34) {
+                android.media.MediaRouter2.getInstance(activity).showSystemOutputSwitcher()
+            } else if (android.os.Build.VERSION.SDK_INT >= 31) {
+                activity.sendBroadcast(android.content.Intent("com.android.systemui.action.LAUNCH_MEDIA_OUTPUT_DIALOG").setPackage("com.android.systemui").putExtra("package_name", activity.packageName))
+                true
+            } else {
+                activity.startActivity(android.content.Intent("android.settings.panel.action.MEDIA_OUTPUT").putExtra("com.android.settings.panel.extra.package_name", activity.packageName))
+                true
+            }
+        } catch (_: Exception) {
+            false
+        }
+        if (!ok) {
+            try {
+                activity.startActivity(android.content.Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS))
+            } catch (_: Exception) {
+            }
+        }
+        invoke.resolve()
+    }
+
+    @Command
     fun listen(invoke: Invoke) {
         channel = invoke.parseArgs(ListenArgs::class.java).channel
         invoke.resolve()

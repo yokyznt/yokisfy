@@ -74,7 +74,4 @@
     <input type="range" class="range vol vol-boost" min="0" max="1.5" step="0.01" value={val} style={`--p:${(Math.min(val, 1) / 1.5) * 100}%;--b:${(val / 1.5) * 100}%`} oninput={input} onchange={commit} aria-label="Volumen" aria-valuetext={over ? `100% más ${db} dB de amplificador` : `${Math.round(val * 100)}%`} />
     <span class="vol-mark" title="Más allá de aquí se amplifica"></span>
   </div>
-  {#if over}
-    {#key kick}<span class="vol-db">+{db} dB</span>{/key}
-  {/if}
 </div>

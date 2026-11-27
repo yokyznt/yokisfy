@@ -2258,7 +2258,7 @@ button:disabled {
   color: transparent;
 }
 
-.ly-line.on .ly-w.now {
+.ly-line.on .ly-w.ly-cur {
   transform: translateY(calc(-0.03em - var(--e) * 0.04em)) scale(calc(1 + var(--e) * 0.08));
   text-shadow: 0 0 calc(12px + var(--e) * 26px) color-mix(in oklab, var(--ac) 55%, rgba(255, 255, 255, 0.5));
 }
@@ -4278,7 +4278,7 @@ a:focus-visible {
   .app.queue-open,
   .app.now-open {
     grid-template-columns: var(--rail) minmax(0, 1fr) 0;
-    grid-template-rows: 56px minmax(0, 1fr) var(--bar);
+    grid-template-rows: 64px minmax(0, 1fr) var(--bar);
     grid-template-areas: 'top top top' 'side view queue' 'bar bar bar';
     column-gap: 0;
     padding: 0 var(--gap);
@@ -4306,12 +4306,17 @@ a:focus-visible {
     display: flex;
     align-items: center;
     gap: 8px;
-    width: min(560px, calc(100% - 440px));
+    width: min(500px, calc(100% - 460px));
+    pointer-events: none;
+  }
+
+  .top-mid > * {
+    pointer-events: auto;
   }
 
   .top-home {
-    width: 48px;
-    height: 48px;
+    width: 42px;
+    height: 42px;
     flex: none;
     border-radius: 50%;
     display: grid;
@@ -4330,7 +4335,7 @@ a:focus-visible {
   .top-search {
     flex: 1;
     min-width: 0;
-    height: 48px;
+    height: 42px;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -4645,4 +4650,95 @@ a:focus-visible {
 .pc-code input:focus {
   outline: none;
   border-color: var(--tx);
+}
+
+.ly-line,
+.ly-line.on {
+  transform: none;
+}
+
+.ly-line {
+  transition: filter 0.7s, opacity 0.7s, color 0.5s;
+}
+
+.ly-line.on .ly-w,
+.ly-line.on .ly-w.ly-cur,
+.ly-line.on .ly-w.lit {
+  transform: none;
+  background: linear-gradient(90deg, #fff calc(var(--p) - 10%), rgba(255, 255, 255, 0.32) calc(var(--p) + 10%));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  transition: text-shadow 0.6s;
+}
+
+.ly-line.on .ly-w.lit {
+  background: none;
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  text-shadow: 0 0 22px color-mix(in oklab, var(--ac) 35%, rgba(255, 255, 255, 0.35));
+}
+
+.ly-line.on .ly-w.ly-cur {
+  text-shadow: 0 0 calc(10px + var(--e) * 18px) color-mix(in oklab, var(--ac) 40%, rgba(255, 255, 255, 0.4));
+}
+
+.ly-line.on {
+  animation: ly-in 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes ly-in {
+  from {
+    opacity: 0.55;
+  }
+}
+
+.ly-rail {
+  transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ly.compact {
+  mask-image: linear-gradient(180deg, transparent 0%, #000 28%, #000 72%, transparent 100%);
+}
+
+.ly.compact .ly-rail {
+  gap: 10px;
+  padding: 0 16px;
+}
+
+.ly.compact .ly-line {
+  font: 800 19px/1.28 var(--font);
+  letter-spacing: -0.01em;
+}
+
+.ly.compact .ly-wait {
+  font-size: 20px;
+  left: 16px;
+}
+
+.now-lyr {
+  display: grid;
+  gap: 8px;
+  padding: 14px 0 6px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--lc) 55%, #000);
+  color: #fff;
+  overflow: hidden;
+}
+
+.now-lyr-h {
+  justify-self: start;
+  margin: 0 16px;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+}
+
+.now-lyr-h:hover {
+  text-decoration: underline;
+}
+
+.now-lyr-box {
+  position: relative;
+  height: 210px;
 }

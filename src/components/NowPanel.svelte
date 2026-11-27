@@ -1,9 +1,11 @@
 <script>
+  import { untrack } from 'svelte'
   import Icon from './Icon.svelte'
   import Cover from './Cover.svelte'
   import { api } from '../lib/api.js'
   import { ui, player, go } from '../lib/state.svelte.js'
-  import { like } from '../lib/actions.js'
+  import { like, outputMenu } from '../lib/actions.js'
+  import Lyrics from './Lyrics.svelte'
   import { paletteFor } from '../lib/palette.js'
 
   let t = $derived(player.track)
@@ -19,30 +21,31 @@
     return () => (alive = false)
   })
 
+  let tid = $derived(t && !t.live ? t.id : null)
+
   $effect(() => {
-    const tr = t
+    const id = tid
     lyr = null
-    if (!tr || tr.live) return
+    if (!id) return
     let alive = true
-    api.lyrics(tr).then((l) => alive && (lyr = l))
+    api.lyrics(untrack(() => player.track)).then((l) => alive && (lyr = l?.lines?.length ? l : null))
     return () => (alive = false)
   })
 
   $effect(() => {
-    const id = setInterval(() => {
+    if (!lyr || ui.fullPlayer || !player.playing) return
+    let raf
+    let last = 0
+    const tick = (ts) => {
+      raf = requestAnimationFrame(tick)
+      if (ts - last < 50) return
+      last = ts
       let p = player.position
-      if (player.playing && player.at) p += (performance.now() - player.at) / 1000
+      if (player.at) p += (performance.now() - player.at) / 1000
       now = p
-    }, 250)
-    return () => clearInterval(id)
-  })
-
-  let lines = $derived.by(() => {
-    const ls = lyr?.lines?.filter((l) => l.text.trim()) || []
-    if (!ls.length) return []
-    let i = ls.findLastIndex((l) => l.start <= now + 0.1)
-    if (i < 0) i = 0
-    return ls.slice(i, i + 3)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
   })
   let liked = $derived(t ? !!ui.liked[t.id] : false)
 
@@ -57,6 +60,7 @@
   <aside class="now" aria-label="Ahora suena">
     <header class="now-head">
       <strong>{t.album || 'Ahora suena'}</strong>
+      <button class="icon-btn sm" onclick={outputMenu} aria-label="Salida de audio" title="Salida de audio"><Icon name="output" size={16} /></button>
       <button class="icon-btn sm" onclick={() => (ui.nowOpen = false)} aria-label="Cerrar panel"><Icon name="close" size={16} /></button>
     </header>
     <button class="now-cover" onclick={() => (ui.fullPlayer = true)} aria-label="Abrir reproductor">
@@ -69,13 +73,11 @@
       </div>
       {#if !t.live}<button class="icon-btn like" class:on={liked} onclick={() => like(t)} aria-label={liked ? 'Quitar de me gusta' : 'Me gusta'}><Icon name={liked ? 'heartFill' : 'heart'} size={20} /></button>{/if}
     </div>
-    {#if lines.length}
-      <button class="now-lyr" style={`--lc:${colors[0] || '#444'}`} onclick={openLyrics}>
-        <span class="now-lyr-h">Letra</span>
-        {#each lines as l, i (l.start)}
-          <span class="now-lyr-l" class:cur={i === 0}>{l.text}</span>
-        {/each}
-      </button>
+    {#if lyr}
+      <div class="now-lyr" style={`--lc:${colors[0] || '#444'}`}>
+        <button class="now-lyr-h" onclick={openLyrics}>Letra</button>
+        <div class="now-lyr-box"><Lyrics {lyr} time={now} compact /></div>
+      </div>
     {/if}
   </aside>
 {/if}

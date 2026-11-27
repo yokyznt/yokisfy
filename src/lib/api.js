@@ -31,6 +31,7 @@ export const api = {
   },
   volume: (v) => call('volume', { v }),
   boost: (db) => call('boost', { db }),
+  systemOutputs: () => call('system_outputs'),
   getBoost: () => call('get_boost'),
   enqueue: (tracks) => call('enqueue', { tracks: plain(tracks) }),
   playNext: (track) => call('play_next', { track: plain(track) }),

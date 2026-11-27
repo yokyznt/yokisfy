@@ -27,6 +27,11 @@ impl<R: Runtime> Media<R> {
         let _ = self.handle.run_mobile_plugin::<serde_json::Value>("update", s);
     }
 
+    pub fn outputs(&self) {
+        #[cfg(target_os = "android")]
+        let _ = self.handle.run_mobile_plugin::<serde_json::Value>("outputs", serde_json::json!({}));
+    }
+
     #[allow(unused_variables)]
     pub fn listen<F: Fn(serde_json::Value) + Send + Sync + 'static>(&self, f: F) {
         #[cfg(target_os = "android")]

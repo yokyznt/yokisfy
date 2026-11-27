@@ -169,6 +169,7 @@ export function openLicense(l) {
 }
 
 export async function outputMenu(e) {
+  if (ui.settings.mobile) return api.systemOutputs()
   const ev = { clientX: e.clientX, clientY: e.clientY, currentTarget: e.currentTarget }
   const r = await api.audioOutputs()
   const pick = async (id, name) => {

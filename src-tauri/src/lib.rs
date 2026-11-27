@@ -258,6 +258,17 @@ fn route_youtube(app: &AppHandle) -> usize {
 }
 
 #[tauri::command]
+fn system_outputs(app: AppHandle) {
+    #[cfg(mobile)]
+    {
+        use tauri_plugin_yk_media::MediaExt;
+        app.media().outputs();
+    }
+    #[cfg(desktop)]
+    let _ = app;
+}
+
+#[tauri::command]
 async fn audio_outputs(core: C<'_>) -> R<serde_json::Value> {
     let cur = saved_output(&core).map(|o| o.0);
     #[cfg(windows)]
@@ -900,7 +911,7 @@ pub fn run() {
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, format_sizes, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, pc_link, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, spectrum, boost, get_boost, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
+            import_spotify, pc_link, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, system_outputs, spectrum, boost, get_boost, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");

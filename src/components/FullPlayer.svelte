@@ -7,7 +7,7 @@
   import CoverFlow from './CoverFlow.svelte'
   import { api } from '../lib/api.js'
   import { ui, player, fmt, go, openMenu } from '../lib/state.svelte.js'
-  import { like, trackMenu } from '../lib/actions.js'
+  import { like, trackMenu, outputMenu } from '../lib/actions.js'
   import { sleepItems } from '../lib/sleep.js'
   import { paletteFor } from '../lib/palette.js'
 
@@ -168,6 +168,7 @@
       <Volume big />
       <div class="fp-foot">
         <button class="icon-btn" class:active={!!ui.sleep} onclick={(e) => openMenu(e, sleepItems())} aria-label="Temporizador para dormir" title={ui.sleep ? `Se pausa ${ui.sleep.label === 'al terminar la canción' ? 'al terminar la canción' : 'en ' + ui.sleep.label}` : 'Temporizador para dormir'}><Icon name="moon" size={22} /></button>
+        <button class="icon-btn" onclick={outputMenu} aria-label="Salida de audio" title="Salida de audio (audífonos, bocinas, tele)"><Icon name="output" size={22} /></button>
         <button class="icon-btn" class:active={mode === 'visual'} onclick={() => setMode('visual')} aria-label="Animaciones" title="Animaciones"><Icon name="spark" size={22} /></button>
         {#if !t.live}<button class="icon-btn" class:active={mode === 'lyrics'} onclick={() => setMode('lyrics')} aria-label="Letra" title="Letra"><Icon name="lyrics" size={22} /></button>{/if}
         <button class="icon-btn" onclick={() => { ui.fullPlayer = false; ui.queueOpen = true }} aria-label="Cola"><Icon name="queue" size={22} /></button>

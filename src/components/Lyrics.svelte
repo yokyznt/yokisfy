@@ -2,7 +2,7 @@
   import { api } from '../lib/api.js'
   import { player } from '../lib/state.svelte.js'
 
-  let { lyr, time = 0 } = $props()
+  let { lyr, time = 0, compact = false } = $props()
   let box = $state()
   let rail = $state()
   let offset = $state(0)
@@ -49,7 +49,7 @@
   }
 </script>
 
-<div class="ly" bind:this={box}>
+<div class="ly" class:compact bind:this={box}>
   <div class="ly-rail" bind:this={rail} style={`transform:translate3d(0,${offset}px,0)`}>
     {#each lines as line, i (i)}
       <button class="ly-line" class:on={i === cur && !gap} class:past={i < cur || (i === cur && gap)} class:near={Math.abs(i - cur) === 1} data-l={i} style={`--d:${Math.min(4, Math.abs(i - (cur < 0 ? 0 : cur)))}`} onclick={() => jump(line.start)}>
@@ -58,7 +58,7 @@
         {:else}
           {#each line.words as w, wi}
             {@const p = i === cur ? fill(line, wi) : i < cur ? 100 : 0}
-            <span class="ly-w" class:lit={p >= 100} class:now={p > 0 && p < 100} style={`--p:${p}%;--e:${emph(line, wi)}`}>{w[1]}</span>
+            <span class="ly-w" class:lit={p >= 100} class:ly-cur={p > 0 && p < 100} style={`--p:${p}%;--e:${emph(line, wi)}`}>{w[1]}</span>
           {/each}
         {/if}
       </button>
