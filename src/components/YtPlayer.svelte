@@ -36,6 +36,7 @@
 
   function hello() {
     frame?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*')
+    frame?.contentWindow?.postMessage(JSON.stringify({ ykBoost: Number(localStorage.getItem('yk-boost') || 0) }), '*')
   }
 
   function vol(k = 1) {

@@ -27,7 +27,7 @@ static VER: AtomicU64 = AtomicU64::new(1);
 static BOOST: AtomicU32 = AtomicU32::new(0x3f80_0000);
 
 pub fn set_boost(db: f32) {
-    let g = 10f32.powf(db.clamp(0.0, 15.0) / 20.0);
+    let g = 10f32.powf(db.clamp(0.0, 20.0) / 20.0);
     BOOST.store(g.to_bits(), Ordering::Relaxed);
 }
 
@@ -186,8 +186,8 @@ impl Chain {
         if amp > 1.0001 {
             for fr in buf.chunks_exact_mut(ch) {
                 let peak = fr.iter().fold(0.0f32, |m, s| m.max((s * pre).abs()));
-                self.env = if peak > self.env { peak } else { self.env * 0.9996 + peak * 0.0004 };
-                let g = if self.env > 0.92 { 0.92 / self.env } else { 1.0 };
+                self.env = if peak > self.env { self.env + (peak - self.env) * 0.5 } else { self.env * 0.9985 + peak * 0.0015 };
+                let g = if self.env > 1.5 { 1.5 / self.env } else { 1.0 };
                 for s in fr.iter_mut() {
                     *s = soft(*s * pre * g);
                 }

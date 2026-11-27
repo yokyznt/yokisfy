@@ -211,6 +211,7 @@ fn window_builder<'a>(app: &'a AppHandle, label: &'a str) -> WebviewWindowBuilde
         .min_inner_size(360.0, 600.0)
         .decorations(false)
         .shadow(true)
+        .initialization_script_for_all_frames(include_str!("../gen/android/app/src/main/assets/yk-yt.js"))
 }
 
 #[cfg(desktop)]

@@ -29,6 +29,7 @@
   {#if cover}
     {#key cover}
       <div class="cf-in">
+        <img class="cf-base" src={cover} alt="" />
         <img class="cf-l l1" src={cover} alt="" />
         <img class="cf-l l2" src={cover} alt="" />
         <img class="cf-l l3" src={cover} alt="" />

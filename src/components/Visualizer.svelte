@@ -2,12 +2,13 @@
   import { untrack } from 'svelte'
   import { levels, useLevels } from '../lib/levels.js'
 
-  let { colors = [], preset = 0, modes = [7, 0, 8, 1, 9, 3, 10, 2, 11, 4, 12, 5, 13, 6], every = 22, dim = 0 } = $props()
+  let { colors = [], preset = 0, modes = [7, 14, 0, 20, 8, 1, 21, 9, 3, 14, 10, 2, 20, 11, 4, 21, 12, 5, 13, 6], every = 22, dim = 0 } = $props()
   let canvas = $state()
   let slot = $state(0)
   let swap = $state(false)
   let mode = $derived(modes[slot % modes.length])
   let first = true
+  if (typeof window !== 'undefined') window.__ykVizSet = (m) => (slot = Math.max(0, modes.indexOf(m)))
 
   function change(to) {
     swap = true
@@ -41,6 +42,7 @@ float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
 float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}
 float spec(float x){x=clamp(x,0.,1.)*7.;return dot(sa,max(1.-abs(vec4(0.,1.,2.,3.)-x),0.))+dot(sb,max(1.-abs(vec4(4.,5.,6.,7.)-x),0.));}
+mat2 rot2(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}
 vec3 pal(float x){x=fract(x+ce*.4);return x<.33?mix(c1,c2,x*3.):x<.66?mix(c2,c3,(x-.33)*3.):mix(c3,c1,(x-.66)*3.);}
 void main(){
   vec2 uv=(gl_FragCoord.xy-.5*r)/min(r.x,r.y);
@@ -100,6 +102,30 @@ void main(){
       col+=pal(s+fi*.2)*star*z*(1.2+hi);
     }
     col+=pal(.5)*.08/(length(uv)+.5)*(1.+bt);
+  }else if(mode==20){
+    vec2 z=rot2(t*.05)*uv*(1.55-lo*.25);
+    vec2 c=vec2(-.7269+.035*sin(t*.13)+lo*.025,.1889+.035*cos(t*.11)+vo*.02);
+    float n=0.,trap=10.;
+    for(int i=0;i<72;i++){z=vec2(z.x*z.x-z.y*z.y,2.*z.x*z.y)+c;trap=min(trap,abs(length(z)-.6));if(dot(z,z)>16.)break;n+=1.;}
+    if(n>71.){
+      col=pal(trap*6.+t*.05)*(.06+.7*exp(-trap*40.))*(.6+lv*.7+bt*.6);
+    }else{
+      float sm=n-log2(max(log2(dot(z,z)),1.));
+      float f=sm/72.;
+      col=pal(f*3.+t*.04)*pow(f,.7)*1.5*(.6+lv*.6+bt*.4);
+      col+=vec3(1.)*pow(f,8.)*(.6+hi*1.5);
+    }
+  }else if(mode==21){
+    vec2 p=uv*(1.2+.25*sin(t*.1));
+    float acc=0.;vec3 cc=vec3(0.);
+    for(int i=0;i<10;i++){
+      p=abs(p)/clamp(dot(p,p),.15,2.)-vec2(.82+lo*.12,.55+.12*sin(t*.23)+vo*.05);
+      p=rot2(t*.03+float(i)*.12+hi*.1)*p;
+      float g=exp(-abs(length(p)-.5)*(22.-bt*6.));
+      cc+=pal(float(i)*.09+t*.03+length(p)*.15)*g;
+    }
+    cc*=(.3+lv*.3+bt*.2);
+    col=pow(cc,vec3(1.35))*1.3;
   }else{
     float d=length(uv);
     float r0=.28+lo*.18+bt*.06;
@@ -155,6 +181,9 @@ void main(){
     q=abs(p)*(1.03+lo*.08+bt*.05)-vec2(.07+.05*sin(t*.31),.05+.04*cos(t*.23));
     q=rot(t*.09+hi*.2)*q;
     decay=.93;
+  }else if(mode==14){
+    q=rot(.004+hi*.01)*p*(.99-lo*.015-bt*.015);
+    decay=.83;
   }else{
     q=rot(.01)*vec2(p.x+.004*sin(p.y*20.+t*3.),p.y)*(.97-lo*.05);
     q.y+=.004*sin(t+p.x*3.);
@@ -191,6 +220,22 @@ void main(){
     float rays=pow(abs(sin(a*6.+t*.7)),24.)+pow(abs(sin(a*9.-t*1.1)),40.);
     e+=vivid(pal(t*.1+d))*rays*smoothstep(.35,.0,d)*(bt*1.2+lo*.4+vo*.5)*.6;
     e+=vivid(pal(t*.13))*(.0012/(d*d+.006))*(.2+bt*1.2);
+  }
+  if(mode==14){
+    float seed=floor(t*1.3);
+    for(int i=0;i<4;i++){
+      float fi=float(i);
+      float an=h(vec2(seed,fi))*6.2832+t*.15;
+      vec2 q=rot(-an)*p;
+      float len=.22+lo*.35+bt*.18+h(vec2(fi,seed+3.))*.15;
+      float jag=(fbm(vec2(q.x*9.+fi*7.,seed*3.+t*2.))-.5)*.32*q.x+(n(vec2(q.x*40.,seed+fi+t*6.))-.5)*.03;
+      float dl=abs(q.y-jag);
+      float on=step(0.,q.x)*smoothstep(len,len*.6,q.x);
+      float br=on*(.0007/(dl+.0005))*(.4+bt*1.8+fx*1.3);
+      float br2=on*step(.55,h(vec2(fi+9.,seed)))*(.0009/(abs(q.y-jag*1.7-(q.x-.1)*.35*sign(sin(fi*3.+seed)))+.0012))*smoothstep(.1,.18,q.x)*(.3+bt);
+      e+=(vivid(pal(fi*.25+t*.05))*.8+vec3(.45))*(br+br2)*.9;
+    }
+    e+=vivid(pal(t*.1))*(.0015/(d*d+.004))*(.25+bt*1.5);
   }
   if(mode==13){
     float g=fbm(p*4.+t*.4);
@@ -345,7 +390,7 @@ void main(){
       clock += ((now - last) / 1000) * (0.35 + l.mood * 0.5 + l.rms * 0.6)
       last = now
       const cols = [rgb(colors[0]), rgb(colors[1]), rgb(colors[2])]
-      const PF = m >= 7 ? pf(m) : null
+      const PF = m >= 7 && m < 20 ? pf(m) : null
       const fbOn = !!PF && PF.ready() && PO.ready()
       if (!fbOn) {
         if (!P0.ready()) {
@@ -355,7 +400,7 @@ void main(){
         gl.useProgram(P0.pr)
         gl.bindFramebuffer(gl.FRAMEBUFFER, null)
         gl.viewport(0, 0, canvas.width, canvas.height)
-        setCommon(P0.U, l, cols, m < 7 ? m : 0)
+        setCommon(P0.U, l, cols, m < 7 || m >= 20 ? m : 0)
         gl.drawArrays(gl.TRIANGLES, 0, 3)
       } else {
         const src = ping

@@ -221,6 +221,18 @@ impl Stream {
         std::thread::Builder::new().name("yk-decode".into()).spawn(move || run_ahead(sh, dec)).map_err(|e| e.to_string())?;
         let mut s = Stream { ahead, channels: first.1, rate: first.2, buf: Vec::new(), meter: [0.0; 6], an: crate::spectrum::Analyzer::new(), dsp: Default::default(), idx: 0, total };
         s.load(first);
+        {
+            let need = (s.rate as usize * s.channels.max(1) as usize * 3) / 2;
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            let mut g = s.ahead.q.lock().unwrap();
+            while g.samples < need && !g.ended {
+                let now = std::time::Instant::now();
+                if now >= deadline {
+                    break;
+                }
+                g = s.ahead.cv.wait_timeout(g, deadline - now).unwrap().0;
+            }
+        }
         Ok(s)
     }
 

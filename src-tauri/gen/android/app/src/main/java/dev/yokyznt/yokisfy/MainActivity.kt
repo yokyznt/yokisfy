@@ -57,7 +57,7 @@ class MainActivity : TauriActivity() {
     }
     if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
       try {
-        WebViewCompat.addDocumentStartJavaScript(webView, KEEP, setOf("https://www.youtube-nocookie.com", "https://www.youtube.com"))
+        WebViewCompat.addDocumentStartJavaScript(webView, KEEP + (try { assets.open("yk-yt.js").bufferedReader().readText() } catch (_: Exception) { "" }), setOf("https://www.youtube-nocookie.com", "https://www.youtube.com"))
       } catch (_: Exception) {
       }
     }

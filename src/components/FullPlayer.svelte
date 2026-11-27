@@ -1,7 +1,6 @@
 <script>
   import Icon from './Icon.svelte'
   import Cover from './Cover.svelte'
-  import Backdrop from './Backdrop.svelte'
   import Lyrics from './Lyrics.svelte'
   import Visualizer from './Visualizer.svelte'
   import Volume from './Volume.svelte'
@@ -102,10 +101,8 @@
   <section class="fp" class:vbg={t.source === 'youtube' && mode !== 'visual' && ui.settings.yt_video !== 'off'} class:immersive class:idle={idle && immersive} class:m-lyrics={mode === 'lyrics'} class:m-visual={mode === 'visual'} aria-label="Reproductor" onmousemove={wake} onpointerdown={wake} ontouchstart={wake}>
     {#if mode === 'visual'}
       <Visualizer {colors} {preset} />
-    {:else if mode === 'lyrics'}
-      <CoverFlow cover={t.cover} {colors} />
     {:else}
-      <Backdrop cover={t.cover} {colors} intense={mode === 'lyrics'} />
+      <CoverFlow cover={t.cover} {colors} />
     {/if}
 
     <header class="fp-head fp-chrome">

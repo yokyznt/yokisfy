@@ -9,9 +9,13 @@
   let boost = $state(Number(localStorage.getItem('yk-boost') || 0))
   let lastVol = 0.8
   let kick = $state(0)
-  const MAX = 12
+  const MAX = 18
 
   api.getBoost().then((db) => (boost = db)).catch(() => {})
+
+  function tellYt(d) {
+    document.querySelector('.yt iframe')?.contentWindow?.postMessage(JSON.stringify({ ykBoost: d }), '*')
+  }
 
   let val = $derived(drag ?? (player.volume >= 0.999 && boost > 0 ? 1 + (boost / MAX) * 0.5 : player.volume))
   let over = $derived(val > 1.001)
@@ -33,6 +37,7 @@
     boost = d
     localStorage.setItem('yk-boost', String(d))
     api.boost(d)
+    tellYt(d)
   }
 
   function input(e) {
