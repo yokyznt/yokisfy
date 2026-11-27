@@ -30,6 +30,8 @@ export const api = {
     return call('seek', { secs })
   },
   volume: (v) => call('volume', { v }),
+  boost: (db) => call('boost', { db }),
+  getBoost: () => call('get_boost'),
   enqueue: (tracks) => call('enqueue', { tracks: plain(tracks) }),
   playNext: (track) => call('play_next', { track: plain(track) }),
   jump: (index) => call('jump', { index }),

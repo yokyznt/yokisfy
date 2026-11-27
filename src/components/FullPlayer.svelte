@@ -4,6 +4,7 @@
   import Backdrop from './Backdrop.svelte'
   import Lyrics from './Lyrics.svelte'
   import Visualizer from './Visualizer.svelte'
+  import Volume from './Volume.svelte'
   import { api } from '../lib/api.js'
   import { ui, player, fmt, go, openMenu } from '../lib/state.svelte.js'
   import { like, trackMenu } from '../lib/actions.js'
@@ -143,8 +144,9 @@
       {#if mode === 'cover'}
         <div class="fp-meta">
           <div>
-            <h2>{t.title}</h2>
+            <h2>{#if t.albumId}<button onclick={() => go('album', t.albumId)}>{t.title}</button>{:else}{t.title}{/if}</h2>
             <p><button class="link-artist" onclick={() => !t.live && go('artist', t.artist)}>{t.artist}</button></p>
+            {#if t.album && t.albumId}<button class="fp-album link-artist" onclick={() => go('album', t.albumId)}>{t.album}</button>{/if}
           </div>
           <button class="icon-btn like" class:on={ui.liked[t.id]} onclick={() => like(t)} aria-label="Me gusta"><Icon name={ui.liked[t.id] ? 'heartFill' : 'heart'} size={24} /></button>
         </div>
@@ -165,6 +167,7 @@
         <button class="icon-btn" onclick={() => api.next()} aria-label="Siguiente"><Icon name="next" size={30} /></button>
         <button class="icon-btn rep" class:active={player.repeat !== 'off'} onclick={() => { player.repeat = { off: 'all', all: 'one', one: 'off' }[player.repeat]; api.repeat(player.repeat) }} aria-label="Repetir"><Icon name="repeat" size={22} />{#if player.repeat === 'one'}<b>1</b>{/if}</button>
       </div>
+      <Volume big />
       <div class="fp-foot">
         <button class="icon-btn" class:active={!!ui.sleep} onclick={(e) => openMenu(e, sleepItems())} aria-label="Temporizador para dormir" title={ui.sleep ? `Se pausa ${ui.sleep.label === 'al terminar la canción' ? 'al terminar la canción' : 'en ' + ui.sleep.label}` : 'Temporizador para dormir'}><Icon name="moon" size={22} /></button>
         <button class="icon-btn" class:active={mode === 'visual'} onclick={() => setMode('visual')} aria-label="Animaciones" title="Animaciones"><Icon name="spark" size={22} /></button>

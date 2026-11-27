@@ -26,6 +26,24 @@
   import { paletteFor } from './lib/palette.js'
   import { newPlaylist, importSpotify } from './lib/actions.js'
 
+  if (typeof window !== 'undefined') {
+    window.__ykBack = () => {
+      if (ui.menu) return !(ui.menu = null)
+      if (ui.eqOpen) return !(ui.eqOpen = false)
+      if (ui.fullPlayer) return !(ui.fullPlayer = false)
+      if (ui.queueOpen) return !(ui.queueOpen = false)
+      if (ui.stack.length) {
+        back()
+        return true
+      }
+      if (ui.view.name !== 'home') {
+        root('home')
+        return true
+      }
+      return false
+    }
+  }
+
   $effect(() => {
     if (!look.dynamic) {
       paintAccent(look.accent || null)

@@ -41,6 +41,31 @@
   let auto = $derived(ui.settings.autoplay !== 'off')
   let xf = $derived(Number(ui.settings.crossfade ?? 5))
   let share = $derived(ui.settings.share_library !== 'off')
+  let autosync = $derived(ui.settings.autosync !== 'off')
+  let lastSync = $derived.by(() => {
+    try {
+      return ui.settings.last_sync ? JSON.parse(ui.settings.last_sync) : null
+    } catch {
+      return null
+    }
+  })
+  let syncing = $state(false)
+  function ago(s) {
+    const m = Math.round((Date.now() / 1000 - s) / 60)
+    return m < 1 ? 'hace un momento' : m < 60 ? `hace ${m} min` : `hace ${Math.round(m / 60)} h`
+  }
+  async function syncNow() {
+    syncing = true
+    try {
+      const r = await api.pcSync()
+      const n = (r.missing?.length || 0) + (r.theirs || 0)
+      toast(`Listo con ${r.name}: ${r.received + r.sent} cambios${n ? `, ${n} descargas en camino` : ''}`)
+      ui.settings.last_sync = JSON.stringify({ name: r.name, at: Math.floor(Date.now() / 1000) })
+    } catch (e) {
+      toast(String(e))
+    }
+    syncing = false
+  }
   let srv = $state({ on: false })
   async function loadSrv() {
     srv = await api.serverInfo()
@@ -116,6 +141,19 @@
       <li><span><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></span>Subir / bajar volumen</li>
       <li><span>Teclas multimedia</span>Funcionan aunque la app esté minimizada</li>
     </ul>
+  </section>
+
+  <section class="set">
+    <h2 class="label">Tu cuenta Yokisfy</h2>
+    <p class="set-help">Tu PC y tu celular quedan unidos solos cuando están en el mismo Wi-Fi: los me gusta, las playlists y las descargas pasan de uno al otro cada minuto, sin contraseña ni correo.</p>
+    <div class="set-row">
+      <span class="set-name">Sincronizar con mis dispositivos{#if lastSync} · <span class="mono">con {lastSync.name}, {ago(lastSync.at)}</span>{/if}</span>
+      <button class="switch" role="switch" aria-checked={autosync} aria-label="Sincronizar con mis dispositivos" onclick={() => save('autosync', autosync ? 'off' : 'on')}><i></i></button>
+    </div>
+    <div class="set-row">
+      <span class="set-name">Lo que descargues en uno se descarga también en el otro</span>
+      <button class="btn ghost" onclick={syncNow} disabled={syncing}><Icon name="sync" size={16} /> {syncing ? 'Buscando…' : 'Sincronizar ahora'}</button>
+    </div>
   </section>
 
   <section class="set">

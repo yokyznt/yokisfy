@@ -79,6 +79,20 @@ fn volume(core: C<'_>, v: f32) -> R<()> {
 }
 
 #[tauri::command]
+fn boost(core: C<'_>, db: f32) -> R<f32> {
+    yokisfy_core::dsp::set_boost(db);
+    core.lib.set_setting("boost", &db.to_string())?;
+    Ok(db)
+}
+
+#[tauri::command]
+fn get_boost(core: C<'_>) -> f32 {
+    let db = core.lib.setting("boost").and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+    yokisfy_core::dsp::set_boost(db);
+    db
+}
+
+#[tauri::command]
 fn enqueue(core: C<'_>, tracks: Vec<Track>) {
     core.player.enqueue(core.lib.resolve(tracks))
 }
@@ -326,8 +340,63 @@ async fn pc_call(core: C<'_>, action: String, body: Option<serde_json::Value>) -
 }
 
 #[tauri::command]
-async fn pc_sync(core: C<'_>) -> R<serde_json::Value> {
-    core.pc_sync().await
+async fn pc_sync(app: AppHandle, core: C<'_>) -> R<serde_json::Value> {
+    let r = core.pc_sync().await?;
+    fetch_missing(&app, serde_json::from_value(r["missing"].clone()).unwrap_or_default());
+    Ok(r)
+}
+
+static FETCHING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+fn fetch_missing(app: &AppHandle, tracks: Vec<Track>) -> usize {
+    let tracks: Vec<Track> = {
+        let Ok(mut g) = FETCHING.lock() else { return 0 };
+        let mut out = Vec::new();
+        for t in tracks {
+            if !g.contains(&t.id) {
+                g.push(t.id.clone());
+                out.push(t);
+            }
+        }
+        out
+    };
+    let n = tracks.len();
+    if n == 0 {
+        return 0;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let core = app.state::<Arc<Core>>().inner().clone();
+        for t in tracks {
+            let h = app.clone();
+            let id = t.id.clone();
+            let _ = core.download(t, None, &move |p: Progress| {
+                let _ = h.emit("download", p);
+            }).await;
+            if let Ok(mut g) = FETCHING.lock() {
+                g.retain(|x| x != &id);
+            }
+            let _ = app.emit("synced", 1);
+        }
+    });
+    n
+}
+
+async fn autosync(app: AppHandle) {
+    tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+    loop {
+        let core = app.state::<Arc<Core>>().inner().clone();
+        if core.lib.setting("autosync").as_deref() != Some("off") {
+            if let Ok(r) = core.pc_sync().await {
+                let n = fetch_missing(&app, serde_json::from_value(r["missing"].clone()).unwrap_or_default());
+                if r["received"].as_u64().unwrap_or(0) > 0 || n > 0 {
+                    let _ = app.emit("synced", r["received"].as_u64().unwrap_or(0) as usize + n);
+                }
+                let _ = core.lib.set_setting("last_sync", &json!({ "name": r["name"], "at": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) }).to_string());
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+    }
 }
 
 #[tauri::command]
@@ -378,6 +447,15 @@ async fn format_sizes(core: C<'_>, urls: Vec<String>) -> R<Vec<Option<u64>>> {
 #[tauri::command]
 fn levels() -> [f32; 3] {
     yokisfy_core::audio::levels()
+}
+
+#[tauri::command]
+fn spectrum(core: C<'_>, external: bool) -> Vec<f32> {
+    if external {
+        yokisfy_core::spectrum::system(saved_output(&core).map(|o| o.1))
+    } else {
+        yokisfy_core::spectrum::read()
+    }
 }
 
 #[tauri::command]
@@ -528,7 +606,7 @@ fn remote(app: AppHandle) -> server::Remote {
                         .filter_map(|p| core.lib.playlist(p.id).ok())
                         .map(|d| json!({ "name": d.playlist.name, "tracks": d.tracks }))
                         .collect();
-                    json!({ "liked": core.lib.liked().unwrap_or_default(), "playlists": lists })
+                    json!({ "liked": core.lib.liked().unwrap_or_default(), "playlists": lists, "downloads": core.lib.downloads().unwrap_or_default() })
                 }
                 "merge" => {
                     let liked: Vec<Track> = serde_json::from_value(arg.get("liked").cloned().unwrap_or_default()).unwrap_or_default();
@@ -541,7 +619,9 @@ fn remote(app: AppHandle) -> server::Remote {
                     if n > 0 {
                         let _ = app.emit("synced", n);
                     }
-                    json!({ "added": n })
+                    let theirs: Vec<Track> = serde_json::from_value(arg.get("downloads").cloned().unwrap_or_default()).unwrap_or_default();
+                    let d = if core.lib.setting("autosync").as_deref() != Some("off") { fetch_missing(&app, core.missing(theirs)) } else { 0 };
+                    json!({ "added": n, "downloading": d })
                 }
                 "party_now" => {
                     let on = server::PARTY.load(std::sync::atomic::Ordering::Relaxed);
@@ -589,7 +669,7 @@ async fn apply_server(app: &AppHandle) {
     let core = app.state::<Arc<Core>>().inner().clone();
     let srv = app.state::<Srv>();
     server::PARTY.store(core.lib.setting("party").as_deref() == Some("on"), std::sync::atomic::Ordering::Relaxed);
-    let want = cfg!(desktop) && (core.lib.setting("share_library").as_deref() != Some("off") || core.lib.setting("party").as_deref() == Some("on"));
+    let want = cfg!(desktop) && (core.lib.setting("share_library").as_deref() != Some("off") || core.lib.setting("party").as_deref() == Some("on") || core.lib.setting("autosync").as_deref() != Some("off"));
     let mut g = srv.lock().await;
     if !want {
         *g = None;
@@ -760,6 +840,7 @@ pub fn run() {
                 let _ = &core;
                 apply_server(&h3).await;
             });
+            tauri::async_runtime::spawn(autosync(app.handle().clone()));
             #[cfg(desktop)]
             hotkeys(app);
             if let Some(o) = saved_output(&app.state::<Arc<Core>>()) {
@@ -787,7 +868,7 @@ pub fn run() {
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, format_sizes, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
+            import_spotify, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, spectrum, boost, get_boost, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");

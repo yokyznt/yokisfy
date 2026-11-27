@@ -28,6 +28,12 @@
     return Math.min(100, ((time - s) / Math.max(0.12, next - s)) * 100)
   }
 
+  function emph(line, wi) {
+    const w = line.words[wi]
+    const next = line.words[wi + 1]?.[0] ?? line.end
+    return Math.max(0, Math.min(1, (next - w[0] - 0.25) / 1.1)).toFixed(2)
+  }
+
   $effect(() => {
     const i = cur < 0 ? 0 : cur
     if (!rail || !box) return
@@ -52,7 +58,7 @@
         {:else}
           {#each line.words as w, wi}
             {@const p = i === cur ? fill(line, wi) : i < cur ? 100 : 0}
-            <span class="ly-w" class:lit={p >= 100} class:now={p > 0 && p < 100} style={`--p:${p}%`}>{w[1]}</span>
+            <span class="ly-w" class:lit={p >= 100} class:now={p > 0 && p < 100} style={`--p:${p}%;--e:${emph(line, wi)}`}>{w[1]}</span>
           {/each}
         {/if}
       </button>

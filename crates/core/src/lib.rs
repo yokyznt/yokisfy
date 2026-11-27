@@ -14,6 +14,7 @@ pub mod pc;
 pub mod player;
 pub mod server;
 pub mod sources;
+pub mod spectrum;
 
 use library::Library;
 pub use model::*;
@@ -278,8 +279,9 @@ impl Core {
                 return Ok(s.clone());
             }
         }
+        let me = server::host_name();
         let found = tokio::task::spawn_blocking(|| pc::discover(std::time::Duration::from_millis(1800))).await.unwrap_or_default();
-        for s in found {
+        for s in found.into_iter().filter(|s| s.name != me) {
             if pc::call(&self.client, &s, "now", &serde_json::Value::Null).await.is_ok() {
                 let _ = self.lib.set_setting("pc_server", &serde_json::to_string(&s)?);
                 return Ok(s);
@@ -302,6 +304,8 @@ impl Core {
             .map(|a| a.iter().filter_map(|p| Some((p["name"].as_str()?.to_string(), serde_json::from_value(p["tracks"].clone()).ok()?))).collect())
             .unwrap_or_default();
         let got = self.lib.merge_sync(&liked, &lists)?;
+        let theirs: Vec<Track> = serde_json::from_value(remote["downloads"].clone()).unwrap_or_default();
+        let missing = self.missing(theirs);
         let mine: Vec<serde_json::Value> = self
             .lib
             .playlists()?
@@ -309,8 +313,14 @@ impl Core {
             .filter_map(|p| self.lib.playlist(p.id).ok())
             .map(|d| serde_json::json!({ "name": d.playlist.name, "tracks": d.tracks }))
             .collect();
-        let sent = pc::call(&self.client, &s, "merge", &serde_json::json!({ "liked": self.lib.liked()?, "playlists": mine })).await?;
-        Ok(serde_json::json!({ "name": s.name, "received": got, "sent": sent["added"].as_u64().unwrap_or(0) }))
+        let sent = pc::call(&self.client, &s, "merge", &serde_json::json!({ "liked": self.lib.liked()?, "playlists": mine, "downloads": self.lib.downloads()? })).await?;
+        Ok(serde_json::json!({ "name": s.name, "received": got, "sent": sent["added"].as_u64().unwrap_or(0), "missing": missing, "theirs": sent["downloading"].as_u64().unwrap_or(0) }))
+    }
+
+    pub fn missing(&self, theirs: Vec<Track>) -> Vec<Track> {
+        let have: std::collections::HashSet<String> = self.lib.downloads().unwrap_or_default().into_iter().map(|t| t.id).collect();
+        let mut seen = std::collections::HashSet::new();
+        theirs.into_iter().filter(|t| t.downloadable && !have.contains(&t.id) && seen.insert(t.id.clone())).collect()
     }
 
     pub async fn party_hosts(&self) -> Vec<pc::PcServer> {

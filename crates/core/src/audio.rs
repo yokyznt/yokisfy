@@ -61,6 +61,7 @@ pub struct Stream {
     total: Option<Duration>,
     meter: [f32; 6],
     dsp: crate::dsp::Chain,
+    an: crate::spectrum::Analyzer,
 }
 
 fn err(e: impl std::fmt::Display) -> SeekError {
@@ -96,6 +97,7 @@ impl Stream {
             decoder,
             buf: Vec::new(),
             meter: [0.0; 6],
+            an: crate::spectrum::Analyzer::new(),
             dsp: Default::default(),
             idx: 0,
             total,
@@ -147,6 +149,9 @@ impl Iterator for Stream {
             return None;
         }
         let s = self.buf[self.idx];
+        if self.channels <= 1 || self.idx % self.channels as usize == 0 {
+            self.an.feed(s, self.rate);
+        }
         self.idx += 1;
         let m = &mut self.meter;
         m[0] += 0.02 * (s - m[0]);

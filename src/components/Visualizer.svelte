@@ -36,19 +36,21 @@
   const vert = `attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`
   const frag = `precision highp float;
 uniform vec2 r;uniform float t;uniform float lv;uniform float lo;uniform float hi;uniform float bt;uniform vec3 c1;uniform vec3 c2;uniform vec3 c3;uniform int mode;
+uniform float ce;uniform float vo;uniform float fx;uniform float mo;uniform vec4 sa;uniform vec4 sb;
 float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
 float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}
-vec3 pal(float x){x=fract(x);return x<.33?mix(c1,c2,x*3.):x<.66?mix(c2,c3,(x-.33)*3.):mix(c3,c1,(x-.66)*3.);}
+float spec(float x){x=clamp(x,0.,1.)*7.;return dot(sa,max(1.-abs(vec4(0.,1.,2.,3.)-x),0.))+dot(sb,max(1.-abs(vec4(4.,5.,6.,7.)-x),0.));}
+vec3 pal(float x){x=fract(x+ce*.4);return x<.33?mix(c1,c2,x*3.):x<.66?mix(c2,c3,(x-.33)*3.):mix(c3,c1,(x-.66)*3.);}
 void main(){
   vec2 uv=(gl_FragCoord.xy-.5*r)/min(r.x,r.y);
   vec3 col;
   if(mode==0){
     vec2 q=vec2(fbm(uv*1.6+t*.05),fbm(uv*1.6-t*.04+4.));
     vec2 w=vec2(fbm(uv*2.+q*2.+t*.12+lo*.8),fbm(uv*2.+q*2.-t*.1+2.));
-    float f=fbm(uv*1.8+w*(1.6+lv*1.4));
+    float f=fbm(uv*1.8+w*(1.6+lv*.9+vo*1.3));
     col=pal(f*1.3+t*.03+lo*.15)*(.35+f*1.1+bt*.35);
-    col+=pow(f,4.)*hi*1.6;
+    col+=pow(f,4.)*(hi+fx)*1.3;
   }else if(mode==1){
     float a=atan(uv.y,uv.x),d=length(uv);
     float k=6.;a=mod(a,6.2832/k);a=abs(a-3.1416/k);
@@ -68,14 +70,14 @@ void main(){
       float w=sin(x*(1.4+fi*.6)+t*(.35+fi*.12))*.18+fbm(vec2(x*1.2+fi*3.,t*.15))*.35;
       float band=exp(-pow((y-w-fi*.12)*(5.-lo*1.5),2.));
       float rays=.6+.4*fbm(vec2(x*8.+fi,t*.6+y*2.));
-      col+=pal(fi*.33+x*.08+t*.02)*band*rays*(.7+hi*.8+bt*.3);
+      col+=pal(fi*.33+x*.08+t*.02)*band*rays*(.4+hi*.5+bt*.3+spec(fi*.3+.1)*1.1);
     }
     col+=pal(.6)*.06*(1.-uv.y);
   }else if(mode==4){
     float a=atan(uv.y,uv.x),d=length(uv);
     float nb=64.;
     float id=floor((a/6.2832+.5)*nb);
-    float sp=fbm(vec2(id*.37,t*1.4))*(.35+lo*.9)+hi*.25*h(vec2(id,floor(t*12.)));
+    float sp=spec(abs(id/nb*2.-1.))*(.85+.3*h(vec2(id,floor(t*10.))))+fbm(vec2(id*.37,t*1.4))*.1;
     float r0=.22+bt*.03;
     float bar=step(r0,d)*step(d,r0+sp*.45)*step(.18,fract((a/6.2832+.5)*nb));
     float glow=.006/abs(d-r0)+.0;
@@ -102,13 +104,15 @@ void main(){
     float d=length(uv);
     float r0=.28+lo*.18+bt*.06;
     float ang=atan(uv.y,uv.x);
-    vec2 cs=vec2(cos(ang),sin(ang));float wave=fbm(cs*1.6+vec2(t*.3,t*.5))*(.08+hi*.25);
+    vec2 cs=vec2(cos(ang),sin(ang));float wave=fbm(cs*1.6+vec2(t*.3,t*.5))*(.06+hi*.15)+spec(abs(ang)/3.1416)*.13;
     float ringd=abs(d-r0-wave);
     float glow=.012/(ringd+.004)*(.6+lv);
     float st=0.;
     for(int i=0;i<3;i++){vec2 g=uv*(6.+float(i)*5.)+t*(.05+float(i)*.03);vec2 id=floor(g);vec2 f=fract(g)-.5;float s=h(id+float(i));st+=smoothstep(.06,0.,length(f-vec2(h(id+1.),h(id+2.))+.5)*.9)*step(.88,s)*(.4+hi);}
-    col=pal(cs.y*.25+cs.x*.1+t*.05)*glow+vec3(st)*.8+pal(.3)*.12/(d+.4);
+    col=pal(cs.y*.25+cs.x*.1+t*.05)*glow+pal(.6)*st*.9+pal(.3)*.12/(d+.4);
   }
+  col*=.7+mo*.5;
+  col/=max(max(max(col.r,col.g),col.b),1.);
   col=pow(max(col,0.),vec3(.9));
   float vig=1.-smoothstep(.4,1.25,length(uv*vec2(.9,1.1)));
   gl_FragColor=vec4(col*vig,1.);
@@ -116,10 +120,12 @@ void main(){
 
   const fbFrag = `precision highp float;
 uniform sampler2D prev;uniform vec2 r;uniform float t;uniform float lv;uniform float lo;uniform float hi;uniform float bt;uniform vec3 c1;uniform vec3 c2;uniform vec3 c3;uniform int mode;
+uniform float ce;uniform float vo;uniform float fx;uniform float mo;uniform vec4 sa;uniform vec4 sb;
 float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
 float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<4;i++){v+=a*n(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}
-vec3 pal(float x){x=fract(x);return x<.33?mix(c1,c2,x*3.):x<.66?mix(c2,c3,(x-.33)*3.):mix(c3,c1,(x-.66)*3.);}
+float spec(float x){x=clamp(x,0.,1.)*7.;return dot(sa,max(1.-abs(vec4(0.,1.,2.,3.)-x),0.))+dot(sb,max(1.-abs(vec4(4.,5.,6.,7.)-x),0.));}
+vec3 pal(float x){x=fract(x+ce*.4);return x<.33?mix(c1,c2,x*3.):x<.66?mix(c2,c3,(x-.33)*3.):mix(c3,c1,(x-.66)*3.);}
 vec3 vivid(vec3 c){float m=max(max(c.r,c.g),c.b);return clamp(c/max(m,.2),0.,1.);}
 mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}
 vec3 hue(vec3 c,float a){vec3 k=vec3(.57735);float ca=cos(a);return c*ca+cross(k,c)*sin(a)+k*dot(k,c)*(1.-ca);}
@@ -130,10 +136,10 @@ void main(){
   vec2 q=p;
   float decay=.955;
   if(mode==7){
-    q=rot(.025+hi*.05+sin(t*.2)*.02)*p*(.955-lo*.06-bt*.05);
+    q=rot((.025+hi*.05+sin(t*.2)*.02)*(ce>.45?1.:-1.))*p*(.955-lo*.06-bt*.05);
     q+=.008*vec2(sin(p.y*7.+t*1.7),cos(p.x*7.+t*1.3))*(1.+lo*3.);
   }else if(mode==8){
-    q=rot((.08+lo*.22+bt*.1)/(d+.3))*p*(.992-bt*.03);
+    q=rot((.08+lo*.18+vo*.12+bt*.1)/(d+.3))*p*(.992-bt*.03);
   }else if(mode==9){
     q=p*(.982-lo*.03);
     q+=.012*vec2(fbm(p*3.+t*.25)-.5,fbm(p*3.-t*.25+5.)-.5)*(1.+lo*5.);
@@ -156,18 +162,20 @@ void main(){
   }
   vec2 su=q/asp+.5;
   vec3 old=texture2D(prev,su).rgb*step(0.,su.x)*step(su.x,1.)*step(0.,su.y)*step(su.y,1.);
-  old=hue(old,.012+hi*.06+bt*.05);
+  old=hue(old,sin(t*.4)*.006+fx*.018+bt*.012);
+  float lum=dot(old,vec3(.3333));
+  old=mix(old,vivid(pal(lum*1.4+t*.02+a*.08))*lum*1.5,.11);
   old=max(old*decay-.018,0.);
   old=max(mix(vec3(dot(old,vec3(.3333))),old,1.05),0.);
-  float pw=(.3+lv*.8+bt*.6)*.3;
+  float pw=(.25+lv*.6+bt*.6+fx*.5)*(.6+mo*.6)*.3;
   vec3 e=vec3(0.);
   if(mode==7||mode==12){
     float r0=.18+lo*.22+bt*.06;
-    float w=sin(a*5.+t*2.)*.03+sin(a*11.-t*3.1)*.02*(1.+hi*3.)+(fbm(vec2(a*2.,t*1.5))-.5)*.12*(.4+hi*2.);
+    float w=sin(a*5.+t*2.)*.03+sin(a*11.-t*3.1)*.02*(1.+hi*3.)+(fbm(vec2(a*2.,t*1.5))-.5)*.08*(.4+hi*2.)+spec(abs(a)/3.1416)*.12;
     e+=vivid(pal(a/6.2832+t*.07))*smoothstep(.014,0.,abs(d-r0-w))*pw;
   }
   if(mode==8||mode==11){
-    float y=sin(p.x*4.+t*1.8)*.12*(.4+lv*1.5)+(fbm(vec2(p.x*3.,t*1.2))-.5)*.25*(.3+hi*2.);
+    float y=(sin(p.x*4.+t*1.8)*.12*(.4+lv*1.2)+(fbm(vec2(p.x*3.,t*1.2))-.5)*.25*(.3+hi*1.5))*(.4+spec(p.x*.45+.5)*1.4);
     e+=vivid(pal(p.x*.3+t*.05))*smoothstep(.012,0.,abs(p.y-y))*pw;
     e+=vivid(pal(.5+p.x*.2))*smoothstep(.01,0.,abs(p.y+y*.7+.18*sin(t*.4)))*pw*.6;
   }
@@ -175,20 +183,21 @@ void main(){
     for(int i=0;i<7;i++){
       float fi=float(i);
       vec2 o=vec2(sin(t*(.7+fi*.23)+fi*1.7),cos(t*(.9+fi*.17)+fi))*(.18+.22*(.5+.5*sin(t*.3+fi)))*(.7+lv*.9);
-      float g=.00035*(1.+bt*2.)/(dot(p-o,p-o)+.0006);
+      float g=.00035*(.6+bt*1.5+spec(fi/6.)*2.5)/(dot(p-o,p-o)+.0006);
       e+=vivid(pal(fi/7.+t*.05))*min(g,1.)*1.2*pw;
     }
   }
   if(mode==10){
     float rays=pow(abs(sin(a*6.+t*.7)),24.)+pow(abs(sin(a*9.-t*1.1)),40.);
-    e+=vivid(pal(t*.1+d))*rays*smoothstep(.35,.0,d)*(bt*1.2+lo*.4)*.6;
+    e+=vivid(pal(t*.1+d))*rays*smoothstep(.35,.0,d)*(bt*1.2+lo*.4+vo*.5)*.6;
     e+=vivid(pal(t*.13))*(.0012/(d*d+.006))*(.2+bt*1.2);
   }
   if(mode==13){
     float g=fbm(p*4.+t*.4);
     e+=vivid(pal(g+t*.06))*smoothstep(.01,0.,abs(g-.5-.08*sin(t)))*pw*.8;
   }
-  gl_FragColor=vec4(min(old+e,vec3(1.)),1.);
+  vec3 o=old+e;
+  gl_FragColor=vec4(o/max(max(max(o.r,o.g),o.b),1.),1.);
 }`
 
   const outFrag = `precision highp float;
@@ -251,7 +260,7 @@ void main(){
       }
       return o
     }
-    const common = ['r', 't', 'lv', 'lo', 'hi', 'bt', 'c1', 'c2', 'c3', 'mode']
+    const common = ['r', 't', 'lv', 'lo', 'hi', 'bt', 'c1', 'c2', 'c3', 'mode', 'ce', 'vo', 'fx', 'mo', 'sa', 'sb']
     const P0 = make(frag, common)
     const PFs = {}
     const pf = (m) => (PFs[m] ??= make(fbFrag.replace('uniform int mode;', `const int mode=${m};`), [...common, 'prev']))
@@ -323,11 +332,17 @@ void main(){
       gl.uniform3f(U.c2, ...cols[1])
       gl.uniform3f(U.c3, ...cols[2])
       gl.uniform1i(U.mode, m)
+      gl.uniform1f(U.ce, l.tone)
+      gl.uniform1f(U.vo, l.mid)
+      gl.uniform1f(U.fx, l.flux)
+      gl.uniform1f(U.mo, l.mood)
+      gl.uniform4f(U.sa, l.spec[0], l.spec[1], l.spec[2], l.spec[3])
+      gl.uniform4f(U.sb, l.spec[4], l.spec[5], l.spec[6], l.spec[7])
     }
     const draw = (now) => {
       const m = curMode()
       const l = levels()
-      clock += ((now - last) / 1000) * (0.6 + l.rms * 0.9)
+      clock += ((now - last) / 1000) * (0.35 + l.mood * 0.5 + l.rms * 0.6)
       last = now
       const cols = [rgb(colors[0]), rgb(colors[1]), rgb(colors[2])]
       const PF = m >= 7 ? pf(m) : null

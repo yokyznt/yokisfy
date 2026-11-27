@@ -1,6 +1,7 @@
 <script>
   import Icon from './Icon.svelte'
   import Cover from './Cover.svelte'
+  import Volume from './Volume.svelte'
   import { api } from '../lib/api.js'
   import { ui, player, fmt, go, sourceName, isLocal } from '../lib/state.svelte.js'
   import { like, trackMenu, outputMenu } from '../lib/actions.js'
@@ -83,13 +84,13 @@
   <div class="pb-progress-mobile" style={`--p:${pct}%`} aria-hidden="true"></div>
   <div class="pb-left">
     {#if t}
-      <button class="pb-cover" onclick={() => (ui.fullPlayer = true)} aria-label="Abrir reproductor">
-        <Cover src={t.cover} size={56} />
+      <button class="pb-open" onclick={() => (ui.fullPlayer = true)} aria-label="Abrir reproductor">
+        <span class="pb-cover"><Cover src={t.cover} size={56} /></span>
+        <span class="pb-meta">
+          <span class="pb-title">{t.title}</span>
+          <span class="pb-artist">{t.artist}</span>
+        </span>
       </button>
-      <div class="pb-meta">
-        <button class="pb-title" onclick={() => t.albumId && go('album', t.albumId)}>{t.title}</button>
-        <button class="pb-artist link-artist" onclick={() => !t.live && go('artist', t.artist)}>{t.artist}</button>
-      </div>
       <button class="icon-btn like" class:on={ui.liked[t.id]} onclick={() => like(t)} aria-label="Me gusta">
         <Icon name={ui.liked[t.id] ? 'heartFill' : 'heart'} size={18} />
       </button>
@@ -132,8 +133,7 @@
     {#if !ui.settings.mobile}<button class="icon-btn sm" onclick={() => api.openMini()} aria-label="Mini reproductor" title="Mini reproductor (siempre encima)"><Icon name="mini" size={18} /></button>{/if}
     <button class="icon-btn sm" class:active={ui.queueOpen} onclick={() => (ui.queueOpen = !ui.queueOpen)} aria-label="Cola" title="Cola"><Icon name="queue" size={18} /></button>
     {#if !ui.settings.mobile}<button class="icon-btn sm" onclick={outputMenu} aria-label="Salida de audio" title="Salida de audio (audífonos, tele, bocinas)"><Icon name="output" size={18} /></button>{/if}
-    <button class="icon-btn sm" onclick={mute} aria-label={vol > 0 ? 'Silenciar' : 'Activar sonido'}><Icon name={vol > 0 ? 'volume' : 'mute'} size={18} /></button>
-    <input type="range" class="range vol" min="0" max="1" step="0.01" value={vol} style={`--p:${vol * 100}%`} oninput={volInput} onchange={volCommit} aria-label="Volumen" />
+    <Volume />
   </div>
 
   <div class="pb-mobile-ctl">

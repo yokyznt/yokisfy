@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::RwLock;
 
 pub const FREQS: [f32; 10] = [31.0, 62.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0];
@@ -24,6 +24,16 @@ impl Default for Config {
 
 static CFG: RwLock<Config> = RwLock::new(Config { enabled: false, gains: [0.0; 10], preamp: 0.0, karaoke: false });
 static VER: AtomicU64 = AtomicU64::new(1);
+static BOOST: AtomicU32 = AtomicU32::new(0x3f80_0000);
+
+pub fn set_boost(db: f32) {
+    let g = 10f32.powf(db.clamp(0.0, 15.0) / 20.0);
+    BOOST.store(g.to_bits(), Ordering::Relaxed);
+}
+
+pub fn boost() -> f32 {
+    f32::from_bits(BOOST.load(Ordering::Relaxed))
+}
 
 pub fn set(c: Config) {
     if let Ok(mut g) = CFG.write() {
@@ -111,6 +121,7 @@ pub struct Chain {
     state: Vec<[f32; 2]>,
     lp: Biquad,
     lp_state: [f32; 2],
+    env: f32,
 }
 
 impl Chain {
@@ -146,7 +157,8 @@ impl Chain {
         if self.ver != VER.load(Ordering::Relaxed) || self.rate != rate || self.ch != ch {
             self.rebuild(rate, ch);
         }
-        if !self.on && !self.karaoke {
+        let amp = boost();
+        if !self.on && !self.karaoke && amp <= 1.0001 {
             return;
         }
         let ch = ch.max(1);
@@ -170,8 +182,19 @@ impl Chain {
                 }
             }
         }
-        let pre = self.pre;
-        let boosting = self.on && (pre > 1.0 || self.filters.len() > 0);
+        let pre = self.pre * amp;
+        if amp > 1.0001 {
+            for fr in buf.chunks_exact_mut(ch) {
+                let peak = fr.iter().fold(0.0f32, |m, s| m.max((s * pre).abs()));
+                self.env = if peak > self.env { peak } else { self.env * 0.9996 + peak * 0.0004 };
+                let g = if self.env > 0.92 { 0.92 / self.env } else { 1.0 };
+                for s in fr.iter_mut() {
+                    *s = soft(*s * pre * g);
+                }
+            }
+            return;
+        }
+        let boosting = self.on && (pre > 1.0 || !self.filters.is_empty());
         for s in buf.iter_mut() {
             let x = *s * pre;
             *s = if boosting { soft(x) } else { x };

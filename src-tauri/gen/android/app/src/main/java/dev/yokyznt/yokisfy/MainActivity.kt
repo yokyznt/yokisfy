@@ -5,6 +5,8 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.webkit.WebView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import androidx.activity.enableEdgeToEdge
@@ -19,8 +21,40 @@ class MainActivity : TauriActivity() {
     super.onCreate(savedInstanceState)
   }
 
+  private var insetJs = ""
+
+  private fun pushInsets() {
+    val w = web ?: return
+    if (insetJs.isEmpty()) return
+    w.evaluateJavascript(insetJs, null)
+  }
+
+  @Deprecated("Deprecated in Java")
+  override fun onBackPressed() {
+    val w = web
+    if (w == null) {
+      moveTaskToBack(true)
+      return
+    }
+    w.evaluateJavascript("(function(){try{return window.__ykBack?String(window.__ykBack()):'false'}catch(e){return 'false'}})()") { r ->
+      if (r == null || !r.contains("true")) moveTaskToBack(true)
+    }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    for (d in longArrayOf(100, 800)) handler.postDelayed({ pushInsets() }, d)
+  }
+
   override fun onWebViewCreate(webView: WebView) {
     web = webView
+    ViewCompat.setOnApplyWindowInsetsListener(webView) { v, insets ->
+      val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+      val d = resources.displayMetrics.density
+      insetJs = "(function(){var s=document.documentElement.style;s.setProperty('--sat','${b.top / d}px');s.setProperty('--sab','${b.bottom / d}px');s.setProperty('--sal','${b.left / d}px');s.setProperty('--sar','${b.right / d}px')})()"
+      for (t in longArrayOf(0, 400, 1200, 3000, 6000)) handler.postDelayed({ pushInsets() }, t)
+      ViewCompat.onApplyWindowInsets(v, insets)
+    }
     if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
       try {
         WebViewCompat.addDocumentStartJavaScript(webView, KEEP, setOf("https://www.youtube-nocookie.com", "https://www.youtube.com"))
