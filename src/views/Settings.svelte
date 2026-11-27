@@ -216,6 +216,11 @@
       {/each}
     </div>
 
+    <div class="set-row">
+      <span class="set-name">Poner de fondo el video de la canción cuando haya (oscurecido)</span>
+      <button class="switch" role="switch" aria-checked={ui.settings.yt_video !== 'off'} aria-label="Video de fondo" onclick={() => save('yt_video', ui.settings.yt_video === 'off' ? 'on' : 'off')}><i></i></button>
+    </div>
+
     <h3 class="set-sub">Color de acento</h3>
     <div class="swatches">
       <button class="sw sw-auto" class:on={!look.accent && !look.dynamic} onclick={() => { setLook('dynamic', null); setLook('accent', null) }} aria-label="El del tema" title="El del tema">Tema</button>

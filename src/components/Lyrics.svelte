@@ -39,7 +39,7 @@
     if (!rail || !box) return
     const el = rail.querySelector(`[data-l="${i}"]`)
     if (!el) return
-    offset = box.clientHeight * 0.38 - el.offsetTop - el.offsetHeight / 2
+    offset = box.clientHeight * 0.5 - el.offsetTop - el.offsetHeight / 2
   })
 
   function jump(t) {

@@ -4,6 +4,7 @@
   import { player, toast, ui } from '../lib/state.svelte.js'
 
   let frame = $state()
+  let vbg = $derived(ui.fullPlayer && (ui.fpMode || 'cover') !== 'visual' && player.track?.source === 'youtube' && !player.loading && ui.settings.yt_video !== 'off')
   let ready = $state(false)
   let firstId = $state(null)
   let alt = 0
@@ -164,7 +165,7 @@
 <svelte:window onmessage={onMessage} />
 
 {#if firstId}
-  <div class="yt" aria-hidden="true">
+  <div class="yt" class:bg={vbg} aria-hidden="true">
     <iframe bind:this={frame} {src} title="Reproductor" tabindex="-1" allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin" onload={hello}></iframe>
   </div>
 {/if}

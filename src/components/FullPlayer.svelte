@@ -5,6 +5,7 @@
   import Lyrics from './Lyrics.svelte'
   import Visualizer from './Visualizer.svelte'
   import Volume from './Volume.svelte'
+  import CoverFlow from './CoverFlow.svelte'
   import { api } from '../lib/api.js'
   import { ui, player, fmt, go, openMenu } from '../lib/state.svelte.js'
   import { like, trackMenu } from '../lib/actions.js'
@@ -98,11 +99,11 @@
 <svelte:window onkeydown={key} />
 
 {#if ui.fullPlayer && t}
-  <section class="fp" class:immersive class:idle={idle && immersive} class:m-lyrics={mode === 'lyrics'} class:m-visual={mode === 'visual'} aria-label="Reproductor" onmousemove={wake} onpointerdown={wake} ontouchstart={wake}>
+  <section class="fp" class:vbg={t.source === 'youtube' && mode !== 'visual' && ui.settings.yt_video !== 'off'} class:immersive class:idle={idle && immersive} class:m-lyrics={mode === 'lyrics'} class:m-visual={mode === 'visual'} aria-label="Reproductor" onmousemove={wake} onpointerdown={wake} ontouchstart={wake}>
     {#if mode === 'visual'}
       <Visualizer {colors} {preset} />
     {:else if mode === 'lyrics'}
-      <Visualizer {colors} modes={[11, 0, 9, 3, 8, 5, 13, 1, 7, 6]} every={28} dim={0.45} />
+      <CoverFlow cover={t.cover} {colors} />
     {:else}
       <Backdrop cover={t.cover} {colors} intense={mode === 'lyrics'} />
     {/if}

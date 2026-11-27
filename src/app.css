@@ -1996,7 +1996,7 @@ button:disabled {
   gap: 4px;
 }
 
-.fp > :not(.bd):not(.viz):not(.fp-viz-hit) {
+.fp > :not(.bd):not(.viz):not(.fp-viz-hit):not(.cf) {
   position: relative;
   z-index: 2;
 }
@@ -2199,7 +2199,7 @@ button:disabled {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  mask-image: linear-gradient(180deg, transparent 4%, #000 22%, #000 70%, transparent 94%);
+  mask-image: linear-gradient(180deg, transparent 3%, #000 24%, #000 76%, transparent 97%);
 }
 
 .ly-rail {
@@ -4043,4 +4043,171 @@ a:focus-visible {
 .fp-bottom {
   position: relative;
   z-index: 3;
+}
+
+.ly-line {
+  opacity: calc(0.62 - var(--d) * 0.08);
+  filter: blur(calc(var(--d) * 0.6px));
+}
+
+.ly-line.past {
+  color: rgba(255, 255, 255, 0.4);
+  opacity: calc(0.3 - var(--d) * 0.05);
+  filter: blur(calc(0.8px + var(--d) * 0.9px));
+}
+
+.ly-line.on {
+  opacity: 1;
+  filter: none;
+}
+
+.ly-line:hover {
+  opacity: 0.9;
+  filter: none;
+}
+
+.ly-wait {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.cf {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--c4);
+  z-index: 0;
+}
+
+.cf-in {
+  position: absolute;
+  inset: -20%;
+  filter: blur(46px) saturate(1.7) brightness(0.85);
+  transform: scale(calc(1 + var(--lv, 0) * 0.06));
+  animation: cf-fade 1.2s ease both;
+}
+
+.cf-l {
+  position: absolute;
+  width: 72%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 42% 58% 55% 45% / 48% 40% 60% 52%;
+  will-change: transform;
+}
+
+.cf-l.l1 {
+  left: -6%;
+  top: -10%;
+  animation: cf-a 23s ease-in-out infinite alternate;
+}
+
+.cf-l.l2 {
+  right: -8%;
+  top: 4%;
+  animation: cf-b 29s ease-in-out infinite alternate;
+  mix-blend-mode: screen;
+  opacity: 0.85;
+}
+
+.cf-l.l3 {
+  left: 18%;
+  bottom: -18%;
+  animation: cf-c 19s ease-in-out infinite alternate;
+  mix-blend-mode: overlay;
+}
+
+.cf-l.l4 {
+  right: 10%;
+  bottom: -6%;
+  width: 52%;
+  animation: cf-d 31s linear infinite;
+  mix-blend-mode: soft-light;
+}
+
+@keyframes cf-a {
+  to {
+    transform: translate(18%, 12%) rotate(140deg) scale(1.25, 0.85);
+  }
+}
+
+@keyframes cf-b {
+  to {
+    transform: translate(-22%, 16%) rotate(-170deg) scale(0.8, 1.3);
+  }
+}
+
+@keyframes cf-c {
+  to {
+    transform: translate(12%, -26%) rotate(210deg) scale(1.35);
+  }
+}
+
+@keyframes cf-d {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cf-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.cf-shade {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 50%, rgba(0, 0, 0, calc(0.25 - var(--bt, 0) * 0.08)), rgba(0, 0, 0, 0.6));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-l {
+    animation: none;
+  }
+}
+
+.yt.bg {
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  opacity: 1;
+  z-index: 40;
+  overflow: hidden;
+  animation: cf-fade 1s ease both;
+}
+
+.yt.bg iframe {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100vw, 177.78vh);
+  height: max(56.25vw, 100vh);
+  transform: translate(-50%, -50%) scale(1.62);
+  filter: saturate(1.15);
+}
+
+.fp.vbg {
+  z-index: 41;
+  background: transparent;
+}
+
+.fp.vbg > .cf,
+.fp.vbg > .bd {
+  opacity: 0;
+  transition: opacity 0.8s;
+}
+
+.fp.vbg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.45) 40%, rgba(0, 0, 0, 0.8));
+  pointer-events: none;
+}
+
+.fp.vbg.m-lyrics::before {
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(6px);
 }
