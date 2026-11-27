@@ -31,6 +31,7 @@ pub struct Core {
     pub lib: Arc<Library>,
     pub player: Player,
     pub discover: discover::Discover,
+    pub dir: PathBuf,
 }
 
 impl Core {
@@ -45,7 +46,7 @@ impl Core {
         });
         let player = Player::new(wrapped);
         let client = Client::builder().user_agent(net::USER_AGENT).build()?;
-        let core = Core { client, lib, player, discover: Default::default() };
+        let core = Core { client, lib, player, discover: Default::default(), dir: data_dir.to_path_buf() };
         core.apply_settings();
         Ok(core)
     }
@@ -53,6 +54,7 @@ impl Core {
     pub fn apply_settings(&self) {
         let high = self.lib.setting("stream_quality").map(|q| q != "normal").unwrap_or(true);
         self.player.high_quality.store(high, Ordering::Relaxed);
+        crate::dsp::set_normalize(self.lib.setting("normalize").as_deref() != Some("off"));
         crate::dsp::set(self.lib.setting("eq").and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default());
         let xf = self.lib.setting("crossfade").and_then(|v| v.parse::<f64>().ok()).unwrap_or(5.0).clamp(0.0, 12.0);
         self.player.crossfade_ms.store((xf * 1000.0) as u32, Ordering::Relaxed);
@@ -489,6 +491,12 @@ impl Core {
         let path = download::download(&self.client, &track, &fmt, &self.download_dir(), on).await?;
         let p = path.to_string_lossy().into_owned();
         self.lib.set_local(&track, &p)?;
+        {
+            let (c, d, t2) = (self.client.clone(), self.dir.join("lyrics"), track.clone());
+            tokio::spawn(async move {
+                let _ = lyrics::find_cached(&c, &d, &t2).await;
+            });
+        }
         let mut t = track;
         t.local_path = Some(p);
         self.player.update(t.clone());
@@ -500,7 +508,7 @@ impl Core {
     }
 
     pub async fn lyrics(&self, t: &Track) -> Result<Option<lyrics::Lyrics>> {
-        lyrics::find(&self.client, t).await
+        lyrics::find_cached(&self.client, &self.dir.join("lyrics"), t).await
     }
 
     pub async fn free_versions(&self, tracks: Vec<Track>, on: &(dyn Fn(usize, usize) + Send + Sync)) -> Vec<Option<Track>> {
@@ -555,6 +563,12 @@ impl Core {
         if original.id != got.id {
             if let Some(p) = &got.local_path {
                 self.lib.set_local(&original, p)?;
+                {
+                    let (c, d, t2) = (self.client.clone(), self.dir.join("lyrics"), original.clone());
+                    tokio::spawn(async move {
+                        let _ = lyrics::find_cached(&c, &d, &t2).await;
+                    });
+                }
                 let mut o = original;
                 o.local_path = Some(p.clone());
                 self.player.update(o.clone());

@@ -1,9 +1,9 @@
 use crate::{Result, Track};
 use reqwest::Client;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Serialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Line {
     pub start: f64,
@@ -13,7 +13,7 @@ pub struct Line {
     pub exact: bool,
 }
 
-#[derive(Serialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Lyrics {
     pub synced: Vec<(f64, String)>,
@@ -139,6 +139,37 @@ fn parse(v: &Value) -> Lyrics {
         plain: v["plainLyrics"].as_str().filter(|s| !s.trim().is_empty()).map(String::from),
         instrumental: v["instrumental"].as_bool().unwrap_or(false),
     }
+}
+
+fn cache_path(dir: &std::path::Path, t: &Track) -> std::path::PathBuf {
+    use md5::Digest;
+    let h = md5::Md5::digest(t.id.as_bytes());
+    dir.join(format!("{}.json", h.iter().map(|b| format!("{b:02x}")).collect::<String>()))
+}
+
+pub fn cached(dir: &std::path::Path, t: &Track) -> Option<Lyrics> {
+    serde_json::from_slice(&std::fs::read(cache_path(dir, t)).ok()?).ok()
+}
+
+pub fn store(dir: &std::path::Path, t: &Track, l: &Lyrics) {
+    if l.lines.is_empty() && l.plain.is_none() && !l.instrumental {
+        return;
+    }
+    let _ = std::fs::create_dir_all(dir);
+    if let Ok(b) = serde_json::to_vec(l) {
+        let _ = std::fs::write(cache_path(dir, t), b);
+    }
+}
+
+pub async fn find_cached(client: &Client, dir: &std::path::Path, t: &Track) -> Result<Option<Lyrics>> {
+    if let Some(l) = cached(dir, t) {
+        return Ok(Some(l));
+    }
+    let r = find(client, t).await?;
+    if let Some(l) = &r {
+        store(dir, t, l);
+    }
+    Ok(r)
 }
 
 pub async fn find(client: &Client, t: &Track) -> Result<Option<Lyrics>> {

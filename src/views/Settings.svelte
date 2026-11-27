@@ -110,6 +110,22 @@
       <span class="set-name">Desvanecer entre canciones · <span class="mono">{xf ? `${xf} s` : 'apagado'}</span></span>
       <input type="range" class="range" min="0" max="12" step="1" value={xf} style={`--p:${(xf / 12) * 100}%`} oninput={(e) => (ui.settings.crossfade = e.currentTarget.value)} onchange={(e) => save('crossfade', e.currentTarget.value)} aria-label="Segundos de desvanecimiento" />
     </div>
+    {#if !ui.settings.mobile}
+      <div class="set-row">
+        <span class="set-name">Mostrar en Discord lo que escucho<small class="set-net">En tu perfil sale «Escuchando …» con la portada</small></span>
+        <button class="switch" role="switch" aria-checked={ui.settings.discord !== 'off'} aria-label="Mostrar en Discord" onclick={() => save('discord', ui.settings.discord === 'off' ? 'on' : 'off')}><i></i></button>
+      </div>
+      {#if ui.settings.discord !== 'off' && srv.discord === false}
+        <div class="set-row">
+          <span class="set-name">ID de la app de Discord</span>
+          <input class="field mono" style="max-width:220px" value={ui.settings.discord_app_id || ''} placeholder="123456789012345678" onchange={async (e) => { await save('discord_app_id', e.currentTarget.value.trim()); loadSrv() }} aria-label="ID de la app de Discord" />
+        </div>
+      {/if}
+    {/if}
+    <div class="set-row">
+      <span class="set-name">Volumen parejo entre canciones<small class="set-net">Que todas suenen igual de fuerte, sin brincos</small></span>
+      <button class="switch" role="switch" aria-checked={ui.settings.normalize !== 'off'} aria-label="Volumen parejo" onclick={() => save('normalize', ui.settings.normalize === 'off' ? 'on' : 'off')}><i></i></button>
+    </div>
     <div class="set-row">
       <span class="set-name">Radio automática al terminar la cola</span>
       <button class="switch" role="switch" aria-checked={auto} aria-label="Radio automática" onclick={() => save('autoplay', auto ? 'off' : 'on')}><i></i></button>

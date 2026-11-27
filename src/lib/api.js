@@ -65,6 +65,8 @@ export const api = {
   pcLink: (code) => call('pc_link', { code }),
   partyHosts: () => call('party_hosts'),
   partyJoin: (code) => call('party_join', { code }),
+  imageData: (url) => call('image_data', { url }),
+  saveImage: (name, data) => call('save_image', { name, data }),
   partyCall: (url, action, body = null) => call('party_call', { url, action, body }),
   openMini: () => call('open_mini'),
   audioOutputs: () => call('audio_outputs'),

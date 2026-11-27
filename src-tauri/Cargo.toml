@@ -21,6 +21,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["sync"] }
 rand = "0.8"
 urlencoding = "2"
+base64 = "0.22"
 futures-util = "0.3"
 yokisfy-core = { path = "../crates/core" }
 tauri-plugin-yk-media = { path = "plugins/yk-media" }
@@ -29,6 +30,7 @@ tauri-plugin-yk-media = { path = "plugins/yk-media" }
 tauri-plugin-updater = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-global-shortcut = "2"
+discord-rich-presence = "1.1"
 
 [target.'cfg(windows)'.dependencies]
 windows-core = "0.62"

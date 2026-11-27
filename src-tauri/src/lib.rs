@@ -1,5 +1,7 @@
 #[cfg(windows)]
 mod route;
+#[cfg(desktop)]
+mod presence;
 use serde_json::json;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -368,6 +370,13 @@ async fn pc_link(core: C<'_>, code: String) -> R<yokisfy_core::pc::PcServer> {
 }
 
 static TUNNEL: std::sync::Mutex<Option<Arc<std::sync::atomic::AtomicBool>>> = std::sync::Mutex::new(None);
+fn discord_ok() -> bool {
+    #[cfg(desktop)]
+    return presence::available();
+    #[cfg(not(desktop))]
+    false
+}
+
 static DATA_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
 
 fn party_code(core: &Core) -> String {
@@ -382,6 +391,33 @@ fn party_code(core: &Core) -> String {
             c
         }
     }
+}
+
+#[tauri::command]
+async fn image_data(core: C<'_>, url: String) -> R<String> {
+    use base64::Engine;
+    let r = core.client.get(&url).send().await.map_err(|e| yokisfy_core::Error::Msg(e.to_string()))?;
+    let mime = r.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("image/jpeg").to_string();
+    let b = r.bytes().await.map_err(|e| yokisfy_core::Error::Msg(e.to_string()))?;
+    Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(&b)))
+}
+
+#[tauri::command]
+fn save_image(app: AppHandle, name: String, data: String) -> R<String> {
+    use base64::Engine;
+    let raw = data.split_once(',').map(|x| x.1).unwrap_or(&data);
+    let bytes = base64::engine::general_purpose::STANDARD.decode(raw).map_err(|e| yokisfy_core::Error::Msg(e.to_string()))?;
+    let dir = app.path().picture_dir().or_else(|_| app.path().download_dir()).map_err(|e| yokisfy_core::Error::Msg(e.to_string()))?.join("Yokisfy");
+    std::fs::create_dir_all(&dir).map_err(|e| yokisfy_core::Error::Msg(e.to_string()))?;
+    let safe: String = name.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == ' ' { c } else { '_' }).collect();
+    let p = dir.join(format!("{safe}.png"));
+    std::fs::write(&p, bytes).map_err(|e| yokisfy_core::Error::Msg(e.to_string()))?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = std::process::Command::new("explorer").arg("/select,").arg(&p).creation_flags(0x0800_0000).spawn();
+    }
+    Ok(p.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -634,6 +670,11 @@ fn settings(core: C<'_>) -> R<serde_json::Value> {
 async fn set_setting(app: AppHandle, core: C<'_>, key: String, value: String) -> R<()> {
     core.lib.set_setting(&key, &value)?;
     core.apply_settings();
+    #[cfg(desktop)]
+    if key == "discord" || key == "discord_app_id" {
+        presence::set_app_id(core.lib.setting("discord_app_id"));
+        presence::set_enabled(core.lib.setting("discord").as_deref() != Some("off"));
+    }
     if key == "share_library" || key == "autosync" {
         apply_server(&app).await;
     }
@@ -801,7 +842,7 @@ async fn server_info(core: C<'_>, srv: State<'_, Srv>) -> R<serde_json::Value> {
     Ok(match g.as_ref() {
         Some(h) => {
             let p = server_password(&core);
-            json!({ "on": true, "url": format!("http://{}:{}", server::lan_ip().unwrap_or_else(|| "localhost".into()), h.port), "user": server::USER, "password": p, "code": format!("{}-{}", &p[..p.len() / 2], &p[p.len() / 2..]), "internet": core.lib.setting("internet").as_deref() != Some("off"), "name": server::host_name(), "public": yokisfy_core::pc::public_url(), "tunnel": yokisfy_core::pc::tunnel_state(), "party_code": core.lib.setting("party_code") })
+            json!({ "on": true, "url": format!("http://{}:{}", server::lan_ip().unwrap_or_else(|| "localhost".into()), h.port), "user": server::USER, "password": p, "code": format!("{}-{}", &p[..p.len() / 2], &p[p.len() / 2..]), "internet": core.lib.setting("internet").as_deref() != Some("off"), "name": server::host_name(), "public": yokisfy_core::pc::public_url(), "tunnel": yokisfy_core::pc::tunnel_state(), "party_code": core.lib.setting("party_code"), "discord": cfg!(desktop) && discord_ok() })
         }
         None => json!({ "on": false }),
     })
@@ -873,6 +914,8 @@ pub fn run() {
                 Arc::new(move |e| {
                     if let Event::Status(s) = &e {
                         push_media(&h, s);
+                        #[cfg(desktop)]
+                        presence::update(s);
                     }
                     let _ = match e {
                         Event::Status(s) => {
@@ -949,6 +992,11 @@ pub fn run() {
                     }
                 });
             }
+            #[cfg(desktop)]
+            {
+                presence::set_app_id(core.lib.setting("discord_app_id"));
+                presence::set_enabled(core.lib.setting("discord").as_deref() != Some("off"));
+            }
             app.manage(core.clone());
             app.manage(Srv::default());
             let h3 = app.handle().clone();
@@ -984,7 +1032,7 @@ pub fn run() {
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, format_sizes, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, pc_link, party_join, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, system_outputs, spectrum, boost, get_boost, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
+            import_spotify, pc_link, party_join, image_data, save_image, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, system_outputs, spectrum, boost, get_boost, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");

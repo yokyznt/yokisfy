@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::RwLock;
 
 pub const FREQS: [f32; 10] = [31.0, 62.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0];
@@ -25,6 +25,12 @@ impl Default for Config {
 static CFG: RwLock<Config> = RwLock::new(Config { enabled: false, gains: [0.0; 10], preamp: 0.0, karaoke: false });
 static VER: AtomicU64 = AtomicU64::new(1);
 static BOOST: AtomicU32 = AtomicU32::new(0x3f80_0000);
+static NORM: AtomicBool = AtomicBool::new(true);
+const TARGET: f32 = 0.2;
+
+pub fn set_normalize(on: bool) {
+    NORM.store(on, Ordering::Relaxed);
+}
 
 pub fn set_boost(db: f32) {
     let g = 10f32.powf(db.clamp(0.0, 20.0) / 20.0);
@@ -122,6 +128,9 @@ pub struct Chain {
     lp: Biquad,
     lp_state: [f32; 2],
     env: f32,
+    ms: f32,
+    ng: f32,
+    seen: f32,
 }
 
 impl Chain {
@@ -153,12 +162,35 @@ impl Chain {
         self.lp_state = [0.0; 2];
     }
 
+    fn level(&mut self, buf: &[f32], ch: usize) -> f32 {
+        if self.ng <= 0.0 {
+            self.ng = 1.0;
+        }
+        if buf.is_empty() {
+            return self.ng;
+        }
+        let e = buf.iter().map(|s| s * s).sum::<f32>() / buf.len() as f32;
+        let secs = (buf.len() / ch.max(1)) as f32 / self.rate.max(1) as f32;
+        if e > 1e-5 {
+            self.seen += secs;
+            let tau = if self.seen < 2.0 { 0.5 } else { 8.0 };
+            self.ms = if self.ms <= 0.0 { e } else { self.ms + (e - self.ms) * (1.0 - (-secs / tau).exp()) };
+        }
+        if self.ms > 0.0 {
+            let want = (TARGET / self.ms.sqrt()).clamp(0.35, 3.0);
+            let tau = if self.seen < 2.0 { 0.3 } else if want < self.ng { 0.8 } else { 4.0 };
+            self.ng += (want - self.ng) * (1.0 - (-secs / tau).exp());
+        }
+        self.ng
+    }
+
     pub fn process(&mut self, buf: &mut [f32], ch: usize, rate: u32) {
         if self.ver != VER.load(Ordering::Relaxed) || self.rate != rate || self.ch != ch {
             self.rebuild(rate, ch);
         }
-        let amp = boost();
-        if !self.on && !self.karaoke && amp <= 1.0001 {
+        let norm = if NORM.load(Ordering::Relaxed) { self.level(buf, ch) } else { 1.0 };
+        let amp = boost() * norm;
+        if !self.on && !self.karaoke && (amp - 1.0).abs() <= 0.0001 {
             return;
         }
         let ch = ch.max(1);

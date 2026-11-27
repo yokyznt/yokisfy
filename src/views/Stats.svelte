@@ -3,6 +3,9 @@
   import Cover from '../components/Cover.svelte'
   import { api } from '../lib/api.js'
   import { go } from '../lib/state.svelte.js'
+  import Wrapped from '../components/Wrapped.svelte'
+
+  let wrapped = $state(false)
 
   const RANGES = [
     [7, 'Semana'],
@@ -43,6 +46,7 @@
 <div class="page stats">
   <div class="sec-head">
     <h1 class="h1">Tus estadísticas</h1>
+    <button class="btn primary" onclick={() => (wrapped = true)}><Icon name="stats" size={16} /> Tu {new Date().getFullYear()} en Yokisfy</button>
   </div>
   <div class="seg">
     {#each RANGES as [d, l]}<button class:on={days === d} onclick={() => (days = d)}>{l}</button>{/each}
@@ -113,3 +117,5 @@
     </section>
   {/if}
 </div>
+
+{#if wrapped}<Wrapped onclose={() => (wrapped = false)} />{/if}
