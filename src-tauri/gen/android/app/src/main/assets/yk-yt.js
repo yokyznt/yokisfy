@@ -1,6 +1,15 @@
 (function () {
   if (!/youtube/.test(location.hostname) || window.__ykHook) return
   window.__ykHook = 1
+  var css = 'video{object-fit:cover!important;width:100%!important;height:100%!important;left:0!important;top:0!important}.html5-video-container,.html5-video-player{width:100%!important;height:100%!important}'
+  function addCss() {
+    var p = document.head || document.documentElement
+    if (!p) return setTimeout(addCss, 50)
+    var s = document.createElement('style')
+    s.textContent = css
+    p.appendChild(s)
+  }
+  addCss()
   var want = 1
   var ctx, gain, comp, post, node, el
   function chain(v) {
