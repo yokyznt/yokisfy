@@ -61,6 +61,7 @@ export const api = {
   stats: (days) => call('stats', { days, offset: -new Date().getTimezoneOffset() * 60 }),
   pcCall: (action, body = null) => call('pc_call', { action, body }),
   pcSync: () => call('pc_sync'),
+  pcLink: (code) => call('pc_link', { code }),
   partyHosts: () => call('party_hosts'),
   partyCall: (url, action, body = null) => call('party_call', { url, action, body }),
   openMini: () => call('open_mini'),

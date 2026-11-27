@@ -113,3 +113,55 @@ pub async fn call(client: &Client, s: &PcServer, action: &str, body: &Value) -> 
         .error_for_status()?;
     Ok(r.json().await?)
 }
+
+pub fn topic(code: &str) -> String {
+    use md5::Digest;
+    let clean: String = code.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_lowercase();
+    let h = md5::Md5::digest(format!("yokisfy:{clean}").as_bytes());
+    format!("yokisfy-{}", h.iter().take(10).map(|b| format!("{b:02x}")).collect::<String>())
+}
+
+pub fn clean_code(code: &str) -> String {
+    code.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_lowercase()
+}
+
+pub async fn announce(client: &Client, code: &str, url: &str) -> Result<()> {
+    client.post(format!("https://ntfy.sh/{}", topic(code))).body(url.to_string()).send().await?.error_for_status()?;
+    Ok(())
+}
+
+pub async fn lookup(client: &Client, code: &str) -> Option<String> {
+    let body = client.get(format!("https://ntfy.sh/{}/json?poll=1&since=24h", topic(code))).send().await.ok()?.text().await.ok()?;
+    body.lines().rev().filter_map(|l| serde_json::from_str::<Value>(l).ok()).find_map(|v| v["message"].as_str().filter(|m| m.starts_with("http")).map(String::from))
+}
+
+pub async fn tunnel(port: u16, code: String, client: Client, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+    while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+        if let Ok(c) = bore_cli::client::Client::new("127.0.0.1", port, "bore.pub", 0, None).await {
+            let url = format!("http://bore.pub:{}", c.remote_port());
+            let _ = announce(&client, &code, &url).await;
+            let (cl, cd, st) = (client.clone(), code.clone(), stop.clone());
+            let again = tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_secs(1800)).await;
+                    if st.load(std::sync::atomic::Ordering::Relaxed) {
+                        break;
+                    }
+                    let _ = announce(&cl, &cd, &url).await;
+                }
+            });
+            let st2 = stop.clone();
+            tokio::select! {
+                _ = c.listen() => {}
+                _ = async move { while !st2.load(std::sync::atomic::Ordering::Relaxed) { tokio::time::sleep(Duration::from_secs(1)).await } } => {}
+            }
+            again.abort();
+        }
+        for _ in 0..15 {
+            if stop.load(std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+}

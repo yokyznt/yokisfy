@@ -10,6 +10,18 @@
   let name = $state(ui.pcCache?.name || '')
   let tracks = $state(ui.pcCache?.tracks || [])
   let error = $state('')
+  let code = $state('')
+  let linking = $state(false)
+  async function link() {
+    linking = true
+    try {
+      await api.pcLink(code)
+      await load()
+    } catch (e) {
+      error = String(e)
+    }
+    linking = false
+  }
   let q = $state('')
 
   async function load() {
@@ -138,7 +150,11 @@
     <div class="empty-box">
       <Icon name="info" size={28} />
       <p>{error}</p>
-      <button class="btn primary" onclick={load}>Buscar otra vez</button>
+      <form class="pc-code" onsubmit={(e) => { e.preventDefault(); link() }}>
+        <input bind:value={code} placeholder="abcde-fghij" aria-label="Código de tu PC" autocapitalize="off" spellcheck="false" />
+        <button class="btn primary" disabled={linking || code.replace(/[^a-z0-9]/gi, '').length < 8}>{linking ? 'Conectando…' : 'Conectar'}</button>
+      </form>
+      <button class="btn ghost" onclick={load}>Buscar otra vez</button>
     </div>
   {:else}
     <p class="sub">{name} · {tracks.length} canciones</p>

@@ -50,6 +50,7 @@
     }
   })
   let syncing = $state(false)
+  let pcCode = $state('')
   function ago(s) {
     const m = Math.round((Date.now() / 1000 - s) / 60)
     return m < 1 ? 'hace un momento' : m < 60 ? `hace ${m} min` : `hace ${Math.round(m / 60)} h`
@@ -145,11 +146,26 @@
 
   <section class="set">
     <h2 class="label">Tu cuenta Yokisfy</h2>
-    <p class="set-help">Tu PC y tu celular quedan unidos solos cuando están en el mismo Wi-Fi: los me gusta, las playlists y las descargas pasan de uno al otro cada minuto, sin contraseña ni correo.</p>
+    <p class="set-help">Tu PC y tu celular se unen solos en el mismo Wi-Fi. Fuera de casa, escribe una vez en el celular el código de la PC. Me gusta, playlists y descargas pasan de uno al otro cada minuto.</p>
     <div class="set-row">
       <span class="set-name">Sincronizar con mis dispositivos{#if lastSync} · <span class="mono">con {lastSync.name}, {ago(lastSync.at)}</span>{/if}</span>
       <button class="switch" role="switch" aria-checked={autosync} aria-label="Sincronizar con mis dispositivos" onclick={() => save('autosync', autosync ? 'off' : 'on')}><i></i></button>
     </div>
+    {#if !ui.settings.mobile && srv.on}
+      <div class="set-row">
+        <span class="set-name">Código para tu celular</span>
+        <button class="btn ghost mono" onclick={() => copy(srv.code)} title="Copiar">{srv.code}</button>
+      </div>
+      <div class="set-row">
+        <span class="set-name">Conectar también por internet, aunque no estén en el mismo Wi-Fi</span>
+        <button class="switch" role="switch" aria-checked={ui.settings.internet !== 'off'} aria-label="Conectar por internet" onclick={() => save('internet', ui.settings.internet === 'off' ? 'on' : 'off')}><i></i></button>
+      </div>
+    {:else if ui.settings.mobile}
+      <form class="set-row pc-code" onsubmit={async (e) => { e.preventDefault(); try { const s = await api.pcLink(pcCode); toast('Conectado con ' + s.name); pcCode = '' } catch (err) { toast(String(err)) } }}>
+        <input bind:value={pcCode} placeholder="Código de tu PC (abcde-fghij)" aria-label="Código de tu PC" autocapitalize="off" spellcheck="false" />
+        <button class="btn primary" disabled={pcCode.replace(/[^a-z0-9]/gi, '').length < 8}>Conectar</button>
+      </form>
+    {/if}
     <div class="set-row">
       <span class="set-name">Lo que descargues en uno se descarga también en el otro</span>
       <button class="btn ghost" onclick={syncNow} disabled={syncing}><Icon name="sync" size={16} /> {syncing ? 'Buscando…' : 'Sincronizar ahora'}</button>

@@ -274,20 +274,51 @@ impl Core {
 
     pub async fn pc_find(&self) -> Result<pc::PcServer> {
         let saved: Option<pc::PcServer> = self.lib.setting("pc_server").and_then(|s| serde_json::from_str(&s).ok());
-        if let Some(s) = &saved {
+        let me = server::host_name();
+        if let Some(s) = saved.as_ref().filter(|s| s.name != me) {
             if pc::call(&self.client, s, "now", &serde_json::Value::Null).await.is_ok() {
                 return Ok(s.clone());
             }
         }
-        let me = server::host_name();
         let found = tokio::task::spawn_blocking(|| pc::discover(std::time::Duration::from_millis(1800))).await.unwrap_or_default();
         for s in found.into_iter().filter(|s| s.name != me) {
+            if pc::call(&self.client, &s, "now", &serde_json::Value::Null).await.is_ok() {
+                let _ = self.lib.set_setting("pc_server", &serde_json::to_string(&s)?);
+                let _ = self.lib.set_setting("pc_code", &s.password);
+                return Ok(s);
+            }
+        }
+        if let Some(code) = self.lib.setting("pc_code").filter(|c| !c.is_empty()) {
+            if let Some(s) = self.pc_by_code(&code).await {
+                return Ok(s);
+            }
+        }
+        Err(Error::Msg("No encontré tu PC. Abre Yokisfy en la PC y escribe aquí el código que aparece en sus Ajustes.".into()))
+    }
+
+    pub async fn pc_by_code(&self, code: &str) -> Option<pc::PcServer> {
+        let code = pc::clean_code(code);
+        if self.lib.setting("server_password").as_deref() == Some(code.as_str()) {
+            return None;
+        }
+        let url = pc::lookup(&self.client, &code).await?;
+        let s = pc::PcServer { name: "Tu PC".into(), url, user: server::USER.into(), password: code, party: false };
+        pc::call(&self.client, &s, "now", &serde_json::Value::Null).await.ok()?;
+        let _ = self.lib.set_setting("pc_server", &serde_json::to_string(&s).ok()?);
+        Some(s)
+    }
+
+    pub async fn pc_link(&self, code: &str) -> Result<pc::PcServer> {
+        let code = pc::clean_code(code);
+        self.lib.set_setting("pc_code", &code)?;
+        let found = tokio::task::spawn_blocking(|| pc::discover(std::time::Duration::from_millis(1500))).await.unwrap_or_default();
+        for s in found.into_iter().filter(|s| s.password == code) {
             if pc::call(&self.client, &s, "now", &serde_json::Value::Null).await.is_ok() {
                 let _ = self.lib.set_setting("pc_server", &serde_json::to_string(&s)?);
                 return Ok(s);
             }
         }
-        Err(Error::Msg("No encontré tu PC. Abre Yokisfy en la PC y conecta el celular al mismo Wi-Fi.".into()))
+        self.pc_by_code(&code).await.ok_or_else(|| Error::Msg("Ese código no respondió. Revisa que Yokisfy esté abierto en la PC y que el código sea el mismo.".into()))
     }
 
     pub async fn pc_call(&self, action: &str, body: serde_json::Value) -> Result<serde_json::Value> {

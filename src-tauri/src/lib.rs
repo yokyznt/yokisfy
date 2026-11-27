@@ -341,6 +341,28 @@ async fn pc_call(core: C<'_>, action: String, body: Option<serde_json::Value>) -
 }
 
 #[tauri::command]
+async fn pc_link(core: C<'_>, code: String) -> R<yokisfy_core::pc::PcServer> {
+    core.pc_link(&code).await
+}
+
+static TUNNEL: std::sync::Mutex<Option<Arc<std::sync::atomic::AtomicBool>>> = std::sync::Mutex::new(None);
+
+fn tunnel(core: &Core, port: Option<u16>) {
+    if let Ok(mut g) = TUNNEL.lock() {
+        if let Some(old) = g.take() {
+            old.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        let Some(port) = port else { return };
+        if !cfg!(desktop) || core.lib.setting("internet").as_deref() == Some("off") {
+            return;
+        }
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        *g = Some(stop.clone());
+        tauri::async_runtime::spawn(yokisfy_core::pc::tunnel(port, server_password(core), core.client.clone(), stop));
+    }
+}
+
+#[tauri::command]
 async fn pc_sync(app: AppHandle, core: C<'_>) -> R<serde_json::Value> {
     let r = core.pc_sync().await?;
     fetch_missing(&app, serde_json::from_value(r["missing"].clone()).unwrap_or_default());
@@ -558,8 +580,12 @@ fn settings(core: C<'_>) -> R<serde_json::Value> {
 async fn set_setting(app: AppHandle, core: C<'_>, key: String, value: String) -> R<()> {
     core.lib.set_setting(&key, &value)?;
     core.apply_settings();
-    if key == "share_library" {
+    if key == "share_library" || key == "autosync" {
         apply_server(&app).await;
+    }
+    if key == "internet" {
+        let port = app.state::<Srv>().lock().await.as_ref().map(|h| h.port);
+        tunnel(&core, port);
     }
     if key == "party" {
         server::PARTY.store(value == "on", std::sync::atomic::Ordering::Relaxed);
@@ -674,10 +700,12 @@ async fn apply_server(app: &AppHandle) {
     let mut g = srv.lock().await;
     if !want {
         *g = None;
+        tunnel(&core, None);
         return;
     }
     if g.is_none() {
         *g = server::start(core.lib.clone(), server_password(&core), Some(remote(app.clone()))).await.ok();
+        tunnel(&core, g.as_ref().map(|h| h.port));
     }
 }
 
@@ -691,7 +719,10 @@ async fn pc_library(core: C<'_>) -> R<serde_json::Value> {
 async fn server_info(core: C<'_>, srv: State<'_, Srv>) -> R<serde_json::Value> {
     let g = srv.lock().await;
     Ok(match g.as_ref() {
-        Some(h) => json!({ "on": true, "url": format!("http://{}:{}", server::lan_ip().unwrap_or_else(|| "localhost".into()), h.port), "user": server::USER, "password": server_password(&core), "name": server::host_name() }),
+        Some(h) => {
+            let p = server_password(&core);
+            json!({ "on": true, "url": format!("http://{}:{}", server::lan_ip().unwrap_or_else(|| "localhost".into()), h.port), "user": server::USER, "password": p, "code": format!("{}-{}", &p[..p.len() / 2], &p[p.len() / 2..]), "internet": core.lib.setting("internet").as_deref() != Some("off"), "name": server::host_name() })
+        }
         None => json!({ "on": false }),
     })
 }
@@ -869,7 +900,7 @@ pub fn run() {
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, format_sizes, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, spectrum, boost, get_boost, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
+            import_spotify, pc_link, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, spectrum, boost, get_boost, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");
