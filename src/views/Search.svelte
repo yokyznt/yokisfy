@@ -7,7 +7,13 @@
   import { api } from '../lib/api.js'
   import { ui } from '../lib/state.svelte.js'
 
-  let q = $state(ui.searchCache.q)
+  let q = $state(ui.searchQ ?? ui.searchCache.q)
+  $effect(() => {
+    const v = ui.searchQ
+    if (v === undefined || v === q) return
+    q = v
+    run(v)
+  })
   let results = $state(ui.searchCache.results)
   let loading = $state(false)
   let showAll = $state(false)

@@ -131,6 +131,7 @@
     {/if}
     <button class="icon-btn sm" class:active={ui.eqOpen} onclick={() => (ui.eqOpen = !ui.eqOpen)} aria-label="Ecualizador" title="Ecualizador"><Icon name="eq" size={18} /></button>
     {#if !ui.settings.mobile}<button class="icon-btn sm" onclick={() => api.openMini()} aria-label="Mini reproductor" title="Mini reproductor (siempre encima)"><Icon name="mini" size={18} /></button>{/if}
+    {#if !ui.settings.mobile}<button class="icon-btn sm" class:active={!ui.queueOpen && ui.nowOpen !== false} onclick={() => { ui.queueOpen = false; ui.nowOpen = ui.nowOpen === false }} aria-label="Ahora suena" title="Ahora suena"><Icon name="disc" size={18} /></button>{/if}
     <button class="icon-btn sm" class:active={ui.queueOpen} onclick={() => (ui.queueOpen = !ui.queueOpen)} aria-label="Cola" title="Cola"><Icon name="queue" size={18} /></button>
     {#if !ui.settings.mobile}<button class="icon-btn sm" onclick={outputMenu} aria-label="Salida de audio" title="Salida de audio (audífonos, tele, bocinas)"><Icon name="output" size={18} /></button>{/if}
     <Volume />

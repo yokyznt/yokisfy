@@ -9,6 +9,8 @@
   import YtPlayer from './components/YtPlayer.svelte'
   import Artist from './views/Artist.svelte'
   import WinControls from './components/WinControls.svelte'
+  import TopBar from './components/TopBar.svelte'
+  import NowPanel from './components/NowPanel.svelte'
   import Home from './views/Home.svelte'
   import Search from './views/Search.svelte'
   import Album from './views/Album.svelte'
@@ -108,7 +110,8 @@
   {#if ready}<MiniPlayer />{/if}
 {:else}
 
-<div class="app" class:queue-open={ui.queueOpen}>
+<div class="app" class:queue-open={ui.queueOpen} class:now-open={!ui.queueOpen && ui.nowOpen !== false && !!player.track}>
+  <TopBar />
   <aside class="side">
     <button class="brand" onclick={() => root('home')} aria-label="Yokisfy, inicio">
       <svg class="logo" viewBox="5 15 54 34" aria-hidden="true">
@@ -118,7 +121,7 @@
     </button>
     <nav class="side-nav">
       {#each nav as [k, label, icon]}
-        <button class="side-link" class:on={isRoot(k)} onclick={() => root(k)}>
+        <button class="side-link" class:on={isRoot(k)} onclick={() => root(k)} title={label}>
           <Icon name={icon} size={20} /><span>{label}</span>
           {#if k === 'downloads' && activeDownloads}<span class="badge mono">{activeDownloads}</span>{/if}
         </button>
@@ -127,17 +130,17 @@
     <div class="side-sec">
       <span class="label">Playlists</span>
       <span class="side-sec-btns">
-        <button class="icon-btn sm" onclick={() => importSpotify()} disabled={!!ui.importing} aria-label="Importar playlist de Spotify o YouTube Music" title="Importar playlist de Spotify o YouTube Music"><Icon name="download" size={17} /></button>
+        <button class="icon-btn sm" onclick={() => importSpotify()} disabled={!!ui.importing} aria-label="Importar playlist de Spotify o YouTube Music" title="Importar playlist de Spotify o YouTube Music"><Icon name="list" size={17} /></button>
         <button class="icon-btn sm" onclick={() => newPlaylist()} aria-label="Nueva playlist" title="Nueva playlist"><Icon name="plus" size={17} /></button>
       </span>
     </div>
     <div class="side-lists">
-      <button class="side-pl" class:on={ui.view.name === 'liked'} onclick={() => go('liked')}>
-        <span class="pl-art liked"><Icon name="heartFill" size={14} /></span><span>Tus me gusta</span>
+      <button class="side-pl" class:on={ui.view.name === 'liked'} onclick={() => go('liked')} title="Tus me gusta">
+        <span class="pl-art liked"><Icon name="heartFill" size={14} /></span><span class="side-name">Tus me gusta</span>
       </button>
       {#each ui.playlists as p (p.id)}
-        <button class="side-pl" class:on={ui.view.name === 'playlist' && ui.view.param === p.id} onclick={() => go('playlist', p.id)}>
-          <Cover src={p.cover} size={32} radius={5} /><span>{p.name}</span>
+        <button class="side-pl" class:on={ui.view.name === 'playlist' && ui.view.param === p.id} onclick={() => go('playlist', p.id)} title={p.name}>
+          <Cover src={p.cover} size={32} radius={5} /><span class="side-name">{p.name}</span>
         </button>
       {/each}
     </div>
@@ -177,6 +180,7 @@
   </main>
 
   <Queue />
+  {#if !ui.queueOpen && ui.nowOpen !== false}<NowPanel />{/if}
   <PlayerBar />
 
   <nav class="tabbar">
