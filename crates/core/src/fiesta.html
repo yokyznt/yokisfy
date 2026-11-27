@@ -134,6 +134,7 @@ async function sync() {
     if (n.playing && paused) { kind === 'yt' ? yt.playVideo() : au.play().catch(() => {}) }
     if (!n.playing && !paused) { kind === 'yt' ? yt.pauseVideo() : au.pause() }
     if (n.playing && Math.abs(d) > 1.2) { kind === 'yt' ? yt.seekTo(target + 0.4, true) : (au.currentTime = target + 0.2) }
+    if (kind === 'au') au.playbackRate = n.playing && Math.abs(d) > 0.15 && Math.abs(d) <= 1.2 ? Math.min(1.06, Math.max(0.94, 1 - d * 0.08)) : 1
     $('sync').textContent = n.playing ? (Math.abs(d) > 1.2 ? 'Ajustando…' : 'En sincronía') : 'En pausa'
   } catch { $('sync').textContent = 'Reconectando…' } finally { busy = false }
 }
