@@ -275,7 +275,7 @@ async fn speech(app: AppHandle) -> R<String> {
     {
         use tauri_plugin_yk_media::MediaExt;
         let h = app.clone();
-        return tauri::async_runtime::spawn_blocking(move || h.media().speech()).await?;
+        return tauri::async_runtime::spawn_blocking(move || h.media().speech()).await.map_err(|e| yokisfy_core::Error::Msg(e.to_string()))?.map_err(yokisfy_core::Error::Msg);
     }
     #[cfg(not(mobile))]
     {
