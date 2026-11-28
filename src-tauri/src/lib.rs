@@ -1193,7 +1193,7 @@ async fn apply_server(app: &AppHandle) {
     let core = app.state::<Arc<Core>>().inner().clone();
     let srv = app.state::<Srv>();
     server::PARTY.store(core.lib.setting("party").as_deref() == Some("on"), std::sync::atomic::Ordering::Relaxed);
-    let want = cfg!(desktop) && (core.lib.setting("share_library").as_deref() != Some("off") || core.lib.setting("party").as_deref() == Some("on") || core.lib.setting("autosync").as_deref() != Some("off"));
+    let want = cfg!(desktop);
     let mut g = srv.lock().await;
     if !want {
         *g = None;

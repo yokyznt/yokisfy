@@ -5542,3 +5542,19 @@ a:focus-visible {
     transition: none;
   }
 }
+
+.pc-other summary {
+  cursor: pointer;
+  color: var(--tx-2);
+  font-size: 13px;
+  list-style: none;
+  text-align: center;
+}
+
+.pc-other summary::-webkit-details-marker {
+  display: none;
+}
+
+.pc-other[open] summary {
+  margin-bottom: 10px;
+}

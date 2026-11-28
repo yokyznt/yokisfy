@@ -24,8 +24,12 @@
   }
   let q = $state('')
 
-  async function load() {
-    state = 'loading'
+  let retry
+  let linked = $derived(!!(ui.settings.pc_code || ui.settings.pc_server))
+
+  async function load(quiet = false) {
+    clearTimeout(retry)
+    if (!(quiet && state === 'waiting')) state = 'loading'
     try {
       const r = await api.pcLibrary()
       name = r.name
@@ -34,9 +38,12 @@
       state = 'ok'
     } catch (e) {
       error = String(e)
-      state = 'error'
+      state = linked ? 'waiting' : 'error'
+      if (linked) retry = setTimeout(() => load(true), 8000)
     }
   }
+
+  $effect(() => () => clearTimeout(retry))
 
   if (!ui.pcCache) load()
 
@@ -145,7 +152,19 @@
     </div>
   {/if}
   {#if state === 'loading'}
-    <p class="empty"><span class="spin"></span> Buscando tu PC en la red de casa…</p>
+    <p class="empty"><span class="spin"></span> Conectando con tu PC…</p>
+  {:else if state === 'waiting'}
+    <div class="empty-box">
+      <span class="spin"></span>
+      <p>Tu PC no responde ahorita: puede estar apagada, sin internet o con Yokisfy cerrado. Sigue vinculada y se conecta sola en cuanto vuelva.</p>
+      <details class="pc-other">
+        <summary>Usar otra PC</summary>
+        <form class="pc-code" onsubmit={(e) => { e.preventDefault(); link() }}>
+          <input bind:value={code} placeholder="abcde-fghij" aria-label="Código de la otra PC" autocapitalize="off" spellcheck="false" />
+          <button class="btn primary" disabled={linking || code.replace(/[^a-z0-9]/gi, '').length < 8}>{linking ? 'Conectando…' : 'Conectar'}</button>
+        </form>
+      </details>
+    </div>
   {:else if state === 'error'}
     <div class="empty-box">
       <Icon name="info" size={28} />
@@ -154,7 +173,7 @@
         <input bind:value={code} placeholder="abcde-fghij" aria-label="Código de tu PC" autocapitalize="off" spellcheck="false" />
         <button class="btn primary" disabled={linking || code.replace(/[^a-z0-9]/gi, '').length < 8}>{linking ? 'Conectando…' : 'Conectar'}</button>
       </form>
-      <button class="btn ghost" onclick={load}>Buscar otra vez</button>
+      <button class="btn ghost" onclick={() => load()}>Buscar otra vez</button>
     </div>
   {:else}
     <p class="sub">{name} · {tracks.length} canciones</p>

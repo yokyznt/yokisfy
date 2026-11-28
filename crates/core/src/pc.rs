@@ -287,9 +287,19 @@ pub async fn tunnel(port: u16, codes: std::sync::Arc<dyn Fn() -> Vec<String> + S
                 set_state("ok", Some(url.clone()));
                 announce_all(&client, &codes(), &url).await;
                 let st2 = stop.clone();
+                let (cl2, cd2, u2) = (client.clone(), codes.clone(), url.clone());
                 tokio::select! {
                     _ = c.listen() => {}
-                    _ = async move { while !st2.load(std::sync::atomic::Ordering::Relaxed) { tokio::time::sleep(Duration::from_secs(1)).await } } => {}
+                    _ = async move {
+                        let mut n = 0u32;
+                        while !st2.load(std::sync::atomic::Ordering::Relaxed) {
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                            n += 1;
+                            if n % 1200 == 0 {
+                                announce_all(&cl2, &cd2(), &u2).await;
+                            }
+                        }
+                    } => {}
                 }
             }
         }
