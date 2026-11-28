@@ -2,13 +2,21 @@
   import Icon from '../components/Icon.svelte'
   import TrackList from '../components/TrackList.svelte'
   import AlbumGrid from '../components/AlbumGrid.svelte'
+  import ArtistGrid from '../components/ArtistGrid.svelte'
+  import Stations from '../components/Stations.svelte'
   import { api } from '../lib/api.js'
   import { ui } from '../lib/state.svelte.js'
 
-  let q = $state(ui.searchCache.q)
+  let q = $state(ui.searchQ ?? ui.searchCache.q)
+  $effect(() => {
+    const v = ui.searchQ
+    if (v === undefined || v === q) return
+    q = v
+    run(v)
+  })
   let results = $state(ui.searchCache.results)
+  let quick = $state(null)
   let loading = $state(false)
-  let filter = $state('all')
   let showAll = $state(false)
   let input = $state()
   let timer
@@ -26,6 +34,10 @@
       ui.searchCache = { q: '', results: null }
       return
     }
+    const mq = seq + 1
+    api.quickSearch(v).then((r) => {
+      if (seq <= mq && r.q === v) quick = r
+    }).catch(() => {})
     timer = setTimeout(async () => {
       const my = ++seq
       loading = true
@@ -33,6 +45,7 @@
         const r = await api.search(v)
         if (my !== seq) return
         results = r
+        quick = null
         showAll = false
         ui.searchCache = { q: v, results: r }
       } finally {
@@ -41,8 +54,10 @@
     }, 450)
   }
 
-  let tracks = $derived(results ? results.tracks.filter((t) => filter === 'all' || t.source === filter) : [])
-  let albums = $derived(results ? results.albums.filter((a) => filter === 'all' || a.source === filter) : [])
+  let tracks = $derived(results ? results.tracks : [])
+  let albums = $derived(results ? results.albums : [])
+  let artists = $derived(results ? results.artists || [] : [])
+  let stations = $derived(results ? results.stations || [] : [])
   const genres = ['jazz', 'lo-fi', 'rock', 'electrónica', 'clásica', 'hip hop', 'ambient', 'folk', 'funk', 'reggae', 'blues', 'piano']
 </script>
 
@@ -53,7 +68,13 @@
     {#if loading}<span class="spin"></span>{:else if q}<button class="icon-btn sm" onclick={() => { q = ''; run('') }} aria-label="Borrar"><Icon name="close" size={16} /></button>{/if}
   </div>
 
-  {#if !results}
+  {#if quick && (loading || !results || ui.searchCache.q !== q.trim())}
+    <section class="sec">
+      <h2 class="h2">Resultados rápidos</h2>
+      <TrackList tracks={quick.tracks} />
+      {#if quick.artists.length}<ArtistGrid artists={quick.artists} limit={4} />{/if}
+    </section>
+  {:else if !results}
     <h2 class="h2">Explorar</h2>
     <div class="genres">
       {#each genres as g, i}
@@ -61,11 +82,6 @@
       {/each}
     </div>
   {:else}
-    <div class="chips" role="tablist">
-      {#each [['all', 'Todo'], ['jamendo', 'Jamendo'], ['archive', 'Internet Archive']] as [k, l]}
-        <button class="chip" class:on={filter === k} onclick={() => (filter = k)} role="tab" aria-selected={filter === k}>{l}</button>
-      {/each}
-    </div>
     {#each results.warnings as w}<p class="warn">{w}</p>{/each}
 
     {#if tracks.length}
@@ -77,13 +93,25 @@
         <TrackList {tracks} limit={showAll ? 0 : 6} />
       </section>
     {/if}
-    {#if albums.length}
+    {#if artists.length}
       <section class="sec">
-        <h2 class="h2">Álbumes y conciertos</h2>
-        <AlbumGrid {albums} />
+        <h2 class="h2">Artistas</h2>
+        <ArtistGrid {artists} limit={6} />
       </section>
     {/if}
-    {#if !tracks.length && !albums.length && !loading}
+    {#if albums.length}
+      <section class="sec">
+        <h2 class="h2">Álbumes</h2>
+        <AlbumGrid {albums} limit={12} />
+      </section>
+    {/if}
+    {#if stations.length}
+      <section class="sec">
+        <h2 class="h2">Radios en vivo</h2>
+        <Stations {stations} limit={6} />
+      </section>
+    {/if}
+    {#if !tracks.length && !albums.length && !artists.length && !stations.length && !loading}
       <p class="empty">Sin resultados para “{ui.searchCache.q}”.</p>
     {/if}
   {/if}

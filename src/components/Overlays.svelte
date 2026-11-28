@@ -1,5 +1,8 @@
 <script>
+  import Icon from './Icon.svelte'
   import { ui } from '../lib/state.svelte.js'
+  import { installUpdate } from '../lib/update.js'
+  import QualityDialog from './QualityDialog.svelte'
   let input = $state()
   let value = $state('')
 
@@ -30,6 +33,35 @@
       <button type="submit" class="btn primary" disabled={!value.trim()}>{ui.prompt.confirmLabel}</button>
     </div>
   </form>
+{/if}
+
+<QualityDialog />
+
+{#if ui.update && !ui.update.dismissed}
+  <div class="update-card" role="status">
+    <div>
+      <strong>Yokisfy {ui.update.version} ya salió</strong>
+      <span>{ui.update.state === 'downloading' ? `Descargando… ${Math.round(ui.update.progress * 100)}%` : ui.update.state === 'installing' ? 'Instalando, la app se reinicia sola' : ui.settings.mobile ? 'Toca para bajar el APK nuevo' : 'Se instala sola en segundos'}</span>
+    </div>
+    {#if ui.update.state === 'ready'}
+      <button class="btn primary sm" onclick={() => installUpdate()}>Actualizar</button>
+      <button class="icon-btn sm" onclick={() => (ui.update = { ...ui.update, dismissed: true })} aria-label="Ahora no"><Icon name="close" size={15} /></button>
+    {/if}
+  </div>
+{/if}
+
+{#if ui.scanning}
+  <div class="import-card" role="status" aria-live="polite">
+    <span>Buscando versiones gratis para descargar{ui.scanning.total ? ` · ${ui.scanning.done} de ${ui.scanning.total}` : '…'}</span>
+    <div class="import-bar"><span style={`width:${ui.scanning.total ? (ui.scanning.done / ui.scanning.total) * 100 : 4}%`}></span></div>
+  </div>
+{/if}
+
+{#if ui.importing}
+  <div class="import-card" role="status" aria-live="polite">
+    <span>Importando playlist{ui.importing.total ? ` · ${ui.importing.done} de ${ui.importing.total}` : '…'}</span>
+    <div class="import-bar"><span style={`width:${ui.importing.total ? (ui.importing.done / ui.importing.total) * 100 : 4}%`}></span></div>
+  </div>
 {/if}
 
 {#if ui.toasts.length}

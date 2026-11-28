@@ -7,12 +7,22 @@ const API: &str = "https://api.jamendo.com/v3.0";
 async fn get(client: &Client, path: &str, client_id: &str, params: &[(&str, &str)]) -> Result<Vec<Value>> {
     let mut q: Vec<(&str, &str)> = vec![("client_id", client_id), ("format", "json")];
     q.extend_from_slice(params);
-    let v: Value = client.get(format!("{API}/{path}/")).query(&q).send().await?.error_for_status()?.json().await?;
-    if v["headers"]["status"].as_str() != Some("success") {
-        let msg = v["headers"]["error_message"].as_str().unwrap_or("error desconocido");
-        return Err(Error::Msg(format!("Jamendo: {msg}")));
+    let mut out = Vec::new();
+    for attempt in 0..5 {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(200 + 150 * attempt)).await;
+        }
+        let v: Value = client.get(format!("{API}/{path}/")).query(&q).send().await?.error_for_status()?.json().await?;
+        if v["headers"]["status"].as_str() != Some("success") {
+            let msg = v["headers"]["error_message"].as_str().unwrap_or("error desconocido");
+            return Err(Error::Msg(format!("Jamendo: {msg}")));
+        }
+        out = v["results"].as_array().cloned().unwrap_or_default();
+        if !out.is_empty() {
+            break;
+        }
     }
-    Ok(v["results"].as_array().cloned().unwrap_or_default())
+    Ok(out)
 }
 
 fn s(v: &Value) -> String {
@@ -58,6 +68,8 @@ fn track(v: &Value) -> Option<Track> {
         license: Some(s(&v["license_ccurl"])).filter(|x| !x.is_empty()),
         downloadable,
         local_path: None,
+        genre: v["musicinfo"]["tags"]["genres"][0].as_str().map(String::from),
+        live: false,
     })
 }
 
@@ -87,7 +99,7 @@ pub async fn search(client: &Client, cid: &str, query: &str) -> Result<SearchRes
     Ok(SearchResults {
         tracks: t?.iter().filter_map(track).collect(),
         albums: a?.iter().filter_map(album).collect(),
-        warnings: vec![],
+        ..Default::default()
     })
 }
 
@@ -101,12 +113,25 @@ pub async fn new_albums(client: &Client, cid: &str) -> Result<Vec<Album>> {
     Ok(get(client, "albums", cid, &[("order", "popularity_week"), ("limit", "12"), ("imagesize", "300")]).await?.iter().filter_map(album).collect())
 }
 
+pub async fn similar(client: &Client, cid: &str, id: &str) -> Result<Vec<Track>> {
+    let mut tp = TRACK_PARAMS.to_vec();
+    tp.extend([("id", id), ("limit", "20")]);
+    Ok(get(client, "tracks/similar", cid, &tp).await?.iter().filter_map(track).collect())
+}
+
+pub async fn by_tag(client: &Client, cid: &str, tag: &str) -> Result<Vec<Track>> {
+    let mut tp = TRACK_PARAMS.to_vec();
+    tp.extend([("tags", tag), ("limit", "20"), ("order", "popularity_month")]);
+    Ok(get(client, "tracks", cid, &tp).await?.iter().filter_map(track).collect())
+}
+
 pub async fn album_detail(client: &Client, cid: &str, id: &str) -> Result<AlbumDetail> {
     let mut tp = TRACK_PARAMS.to_vec();
-    tp.extend([("album_id", id), ("limit", "100"), ("order", "position")]);
+    tp.extend([("album_id", id), ("limit", "100")]);
     let ap = [("id", id), ("imagesize", "300")];
     let (a, t) = tokio::join!(get(client, "albums", cid, &ap), get(client, "tracks", cid, &tp));
-    let tracks: Vec<Track> = t?.iter().filter_map(track).collect();
+    let mut tracks: Vec<Track> = t?.iter().filter_map(track).collect();
+    tracks.sort_by_key(|t| t.track_no.unwrap_or(u32::MAX));
     let mut album = a?.iter().find_map(album).ok_or_else(|| Error::Msg("Álbum no encontrado".into()))?;
     album.license = tracks.first().and_then(|t| t.license.clone());
     Ok(AlbumDetail { album, tracks })

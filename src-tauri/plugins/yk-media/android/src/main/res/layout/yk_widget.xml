@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/yk_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/yk_widget_bg"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="10dp">
+
+    <ImageView
+        android:id="@+id/yk_art"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:background="@drawable/yk_widget_art_bg"
+        android:clipToOutline="true"
+        android:scaleType="centerCrop"
+        android:src="@drawable/yk_widget_art" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/yk_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Yokisfy"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/yk_artist"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Toca para abrir"
+            android:textColor="#A3A3A8"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/yk_prev"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="@android:color/transparent"
+        android:contentDescription="Anterior"
+        android:src="@drawable/yk_prev" />
+
+    <ImageButton
+        android:id="@+id/yk_play"
+        android:layout_width="46dp"
+        android:layout_height="46dp"
+        android:layout_marginStart="2dp"
+        android:layout_marginEnd="2dp"
+        android:background="@drawable/yk_widget_play_bg"
+        android:contentDescription="Reproducir o pausar"
+        android:src="@drawable/yk_play" />
+
+    <ImageButton
+        android:id="@+id/yk_next"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="@android:color/transparent"
+        android:contentDescription="Siguiente"
+        android:src="@drawable/yk_next" />
+</LinearLayout>

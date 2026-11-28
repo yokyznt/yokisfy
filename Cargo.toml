@@ -1,6 +1,10 @@
 [workspace]
-members = ["crates/core", "src-tauri"]
+members = ["crates/core", "src-tauri", "src-tauri/plugins/yk-media"]
 resolver = "2"
+exclude = ["vendor/rodio"]
+
+[patch.crates-io]
+rodio = { path = "vendor/rodio" }
 
 [profile.release]
 lto = true

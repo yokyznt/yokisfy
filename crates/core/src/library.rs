@@ -133,6 +133,43 @@ impl Library {
         )
     }
 
+    pub fn plays(&self, since: i64) -> Result<Vec<(Track, i64)>> {
+        let c = self.db.lock().unwrap();
+        let mut st = c.prepare("SELECT t.json, h.played_at FROM history h JOIN tracks t ON t.id = h.track_id WHERE h.played_at >= ?1 ORDER BY h.played_at")?;
+        let rows = st.query_map([since], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+        Ok(rows.flatten().filter_map(|(j, at)| serde_json::from_str::<Track>(&j).ok().map(|t| (t, at))).collect())
+    }
+
+    pub fn merge_sync(&self, liked: &[Track], lists: &[(String, Vec<Track>)]) -> Result<usize> {
+        let ok = |t: &Track| !t.live && t.source != "local" && t.source != "pc" && (!t.stream_url.is_empty() || t.source == "youtube");
+        let have: std::collections::HashSet<String> = self.liked_ids()?.into_iter().collect();
+        let mut n = 0;
+        for t in liked.iter().filter(|t| ok(t)) {
+            if !have.contains(&t.id) {
+                self.toggle_like(t)?;
+                n += 1;
+            }
+        }
+        let existing = self.playlists()?;
+        for (name, ts) in lists {
+            let ts: Vec<Track> = ts.iter().filter(|t| ok(t)).cloned().collect();
+            if ts.is_empty() {
+                continue;
+            }
+            let id = match existing.iter().find(|p| p.name == *name) {
+                Some(p) => p.id,
+                None => self.create_playlist(name)?,
+            };
+            let cur: std::collections::HashSet<String> = self.playlist(id)?.tracks.into_iter().map(|t| t.id).collect();
+            let add: Vec<Track> = ts.into_iter().filter(|t| !cur.contains(&t.id)).collect();
+            n += add.len();
+            if !add.is_empty() {
+                self.add_to_playlist(id, &add)?;
+            }
+        }
+        Ok(n)
+    }
+
     pub fn record_play(&self, t: &Track) -> Result<()> {
         let c = self.db.lock().unwrap();
         Self::upsert(&c, t)?;

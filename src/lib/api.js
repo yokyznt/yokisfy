@@ -13,14 +13,32 @@ export async function call(cmd, args = {}) {
 
 export const api = {
   search: (q) => call('search', { q }),
+  quickSearch: (q) => call('quick_search', { q }),
   album: (id) => call('album', { id }),
+  artist: (id) => call('artist', { id }),
   home: () => call('home'),
+  stations: (q) => call('stations', { q }),
+  serverInfo: () => call('server_info'),
+  pcLibrary: () => call('pc_library'),
+  startRadio: (track) => call('start_radio', { track: plain(track) }),
   play: (tracks, start = 0) => call('play', { tracks: plain(tracks), start }),
   toggle: () => call('toggle'),
+  setPlaying: (playing) => invoke('set_playing', { playing }).catch(() => {}),
   next: () => call('next'),
   prev: () => call('prev'),
-  seek: (secs) => call('seek', { secs }),
+  seek: (secs) => {
+    markSeek()
+    return call('seek', { secs })
+  },
   volume: (v) => call('volume', { v }),
+  boost: (db) => call('boost', { db }),
+  systemOutputs: () => call('system_outputs'),
+  handoffSend: () => call('handoff_send'),
+  handoffPull: () => call('handoff_pull'),
+  handoffOffer: () => call('handoff_offer'),
+  handoffPoll: () => invoke('handoff_poll'),
+  speech: () => invoke('speech'),
+  getBoost: () => call('get_boost'),
   enqueue: (tracks) => call('enqueue', { tracks: plain(tracks) }),
   playNext: (track) => call('play_next', { track: plain(track) }),
   jump: (index) => call('jump', { index }),
@@ -41,6 +59,28 @@ export const api = {
   downloads: () => call('downloads'),
   download: (track, kind = null) => call('download', { track: plain(track), kind }),
   deleteDownload: (id) => call('delete_download', { id }),
+  importSpotify: (link) => call('import_spotify', { link }),
+  lyrics: (track) => invoke('lyrics', { track: plain(track) }).catch(() => null),
+  freeVersions: (tracks) => call('free_versions', { tracks: plain(tracks) }),
+  downloadAs: (original, free, kind = null) => call('download_as', { original: plain(original), free: plain(free), kind }),
+  formatSizes: (urls) => call('format_sizes', { urls }),
+  snapshot: () => call('snapshot'),
+  stats: (days) => call('stats', { days, offset: -new Date().getTimezoneOffset() * 60 }),
+  pcCall: (action, body = null) => call('pc_call', { action, body }),
+  pcSync: () => call('pc_sync'),
+  pcLink: (code) => call('pc_link', { code }),
+  partyHosts: () => call('party_hosts'),
+  partyJoin: (code) => call('party_join', { code }),
+  imageData: (url) => call('image_data', { url }),
+  saveImage: (name, data) => call('save_image', { name, data }),
+  partyCall: (url, action, body = null) => call('party_call', { url, action, body }),
+  openMini: () => call('open_mini'),
+  audioOutputs: () => call('audio_outputs'),
+  setAudioOutput: (id, name) => call('set_audio_output', { id, name }),
+  newWindow: () => call('new_window'),
+  extProgress: (pos, dur) => invoke('ext_progress', { pos, dur }).catch(() => {}),
+  extEnded: () => invoke('ext_ended').catch(() => {}),
+  extFailed: (error) => invoke('ext_failed', { error }).catch(() => {}),
   settings: () => call('settings'),
   setSetting: (key, value) => call('set_setting', { key, value: String(value) })
 }
@@ -49,12 +89,43 @@ function plain(v) {
   return JSON.parse(JSON.stringify(v))
 }
 
+let seekAt = 0
+export function markSeek() {
+  seekAt = Date.now()
+}
+
 export async function boot() {
   await listen('player', (e) => {
-    Object.assign(player, e.payload, { at: performance.now() })
+    const p = e.payload
+    const now = performance.now()
+    const shown = player.playing && !player.loading && player.at ? player.position + (now - player.at) / 1000 : player.position
+    const same = p.track?.id && p.track.id === player.track?.id
+    const back = shown - p.position
+    if (same && p.playing && player.playing && back > 0 && back < 1.5 && Date.now() - seekAt > 1500) {
+      Object.assign(player, p, { position: shown - back * 0.15, at: now })
+    } else Object.assign(player, p, { at: now })
   })
   await listen('queue', (e) => {
     player.queue = e.payload.tracks
+  })
+  await listen('scan', (e) => {
+    if (ui.scanning) ui.scanning = e.payload
+  })
+  await listen('import', (e) => {
+    if (ui.importing) ui.importing = e.payload
+  })
+  await listen('handoff-out', () => toast('La música pasó a tu celular'))
+  await listen('handoff-in', () => toast('La música llegó desde tu celular'))
+  await listen('party-skip', () => toast('Tus amigos votaron y se saltó la canción'))
+  await listen('party-add', (e) => {
+    toast(`${e.payload.from} agregó «${e.payload.title}» a la fiesta`)
+  })
+  await listen('synced', (e) => {
+    toast(`Sincronizado con tu celular: ${e.payload} cambios`)
+    refreshPlaylists()
+  })
+  await listen('autoradio', (e) => {
+    toast(`Radio automática: música parecida a ${e.payload}`)
   })
   await listen('download', (e) => {
     const p = e.payload
@@ -66,11 +137,42 @@ export async function boot() {
       toast(`No se pudo descargar ${p.title}: ${p.error}`)
     }
   })
+  const snap = await api.snapshot().catch(() => null)
+  if (snap?.player) Object.assign(player, snap.player, { at: performance.now() })
+  if (snap?.queue) player.queue = snap.queue.tracks
   const [ids, pls, settings, dls] = await Promise.all([api.likedIds(), api.playlists(), api.settings(), api.downloads()])
   for (const id of ids) ui.liked[id] = true
   ui.playlists = pls
   ui.settings = settings
   for (const t of dls) ui.local[t.id] = t.localPath
+  if (settings.mobile) {
+    setTimeout(() => {
+      api
+        .pcSync()
+        .then((r) => {
+          if (r.received) {
+            toast(`Se sincronizó con ${r.name}: ${r.received} cosas nuevas`)
+            refreshPlaylists()
+            api.likedIds().then((ids) => ids.forEach((id) => (ui.liked[id] = true)))
+          }
+        })
+        .catch(() => {})
+    }, 6000)
+  }
+  if (!ui.settings.mobile) {
+    try {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      getCurrentWindow().onFocusChanged(async ({ payload }) => {
+        if (!payload) return
+        const [ids2, pls2, st2] = await Promise.all([api.likedIds(), api.playlists(), api.settings()])
+        for (const k of Object.keys(ui.liked)) delete ui.liked[k]
+        for (const id of ids2) ui.liked[id] = true
+        ui.playlists = pls2
+        ui.settings = st2
+      })
+    } catch {}
+  }
+  setTimeout(() => import('./update.js').then((m) => m.checkUpdate()), 4000)
 }
 
 export async function refreshPlaylists() {

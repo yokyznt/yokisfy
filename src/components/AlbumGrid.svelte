@@ -32,7 +32,7 @@
       </div>
       <span class="card-title">{a.title}</span>
       <span class="card-sub">{a.artist}{a.year ? ` · ${a.year}` : ''}</span>
-      <span class="card-src mono">{sourceName(a.source)}</span>
+      {#if sourceName(a.source)}<span class="card-src mono">{sourceName(a.source)}</span>{/if}
     </div>
   {/each}
 </div>

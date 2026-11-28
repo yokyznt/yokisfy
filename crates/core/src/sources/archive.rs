@@ -233,6 +233,8 @@ pub async fn album(client: &Client, identifier: &str) -> Result<AlbumDetail> {
                 license: license.clone(),
                 downloadable,
                 local_path: None,
+                genre: None,
+                live: false,
             })
         })
         .collect();
@@ -282,5 +284,5 @@ pub async fn search(client: &Client, query: &str) -> Result<SearchResults> {
     if matched.len() < 8 {
         matched.extend(fallback.into_iter().take(8 - matched.len()));
     }
-    Ok(SearchResults { tracks: matched, albums, warnings: vec![] })
+    Ok(SearchResults { tracks: matched, albums, ..Default::default() })
 }

@@ -58,7 +58,7 @@
       <button class="icon-btn like" class:on={ui.liked[t.id]} onclick={() => like(t)} aria-label={ui.liked[t.id] ? 'Quitar de Me gusta' : 'Me gusta'}>
         <Icon name={ui.liked[t.id] ? 'heartFill' : 'heart'} size={17} />
       </button>
-      <span class="tl-dur mono">{fmt(t.duration)}</span>
+      <span class="tl-dur mono">{t.live ? 'EN VIVO' : t.duration > 0 ? fmt(t.duration) : ''}</span>
       <button class="icon-btn" onclick={(e) => trackMenu(e, t, extraMenu ? extraMenu(t, i) : [])} aria-label="Más opciones">
         <Icon name="more" size={18} />
       </button>

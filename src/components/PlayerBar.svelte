@@ -1,9 +1,12 @@
 <script>
   import Icon from './Icon.svelte'
   import Cover from './Cover.svelte'
+  import Volume from './Volume.svelte'
   import { api } from '../lib/api.js'
   import { ui, player, fmt, go, sourceName, isLocal } from '../lib/state.svelte.js'
-  import { like, trackMenu } from '../lib/actions.js'
+  import { like, trackMenu, outputMenu } from '../lib/actions.js'
+  import { sleepItems } from '../lib/sleep.js'
+  import { openMenu } from '../lib/state.svelte.js'
 
   let now = $state(performance.now())
   let drag = $state(null)
@@ -32,6 +35,7 @@
   let quality = $derived.by(() => {
     if (!t) return ''
     if (isLocal(t)) return 'LOCAL'
+    if (t.source === 'youtube') return ''
     const hq = (ui.settings.stream_quality || 'alta') !== 'normal'
     const f = hq ? t.formats?.find((f) => f.kind !== 'wav') : t.formats?.find((f) => f.kind === 'mp3' || f.kind === 'ogg')
     return f ? f.label.split(' ')[0] : 'STREAM'
@@ -80,13 +84,13 @@
   <div class="pb-progress-mobile" style={`--p:${pct}%`} aria-hidden="true"></div>
   <div class="pb-left">
     {#if t}
-      <button class="pb-cover" onclick={() => (ui.fullPlayer = true)} aria-label="Abrir reproductor">
-        <Cover src={t.cover} size={56} />
+      <button class="pb-open" onclick={() => (ui.fullPlayer = true)} aria-label="Abrir reproductor">
+        <span class="pb-cover"><Cover src={t.cover} size={56} /></span>
+        <span class="pb-meta">
+          <span class="pb-title">{t.title}</span>
+          <span class="pb-artist">{t.artist}</span>
+        </span>
       </button>
-      <div class="pb-meta">
-        <button class="pb-title" onclick={() => t.albumId && go('album', t.albumId)}>{t.title}</button>
-        <span class="pb-artist">{t.artist}</span>
-      </div>
       <button class="icon-btn like" class:on={ui.liked[t.id]} onclick={() => like(t)} aria-label="Me gusta">
         <Icon name={ui.liked[t.id] ? 'heartFill' : 'heart'} size={18} />
       </button>
@@ -108,20 +112,29 @@
       </button>
     </div>
     <div class="pb-seek">
-      <span class="mono time">{fmt(pos)}</span>
-      <input type="range" class="range" min="0" max={player.duration || 1} step="0.1" value={pos} style={`--p:${pct}%`} oninput={seekInput} onchange={seekCommit} disabled={!t} aria-label="Posición" />
-      <span class="mono time">{fmt(player.duration)}</span>
+      {#if t?.live}
+        <span class="live-pill mono"><i></i>EN VIVO · {fmt(pos)}</span>
+      {:else}
+        <span class="mono time">{fmt(pos)}</span>
+        <input type="range" class="range" min="0" max={player.duration || 1} step="0.1" value={pos} style={`--p:${pct}%`} oninput={seekInput} onchange={seekCommit} disabled={!t} aria-label="Posición" />
+        <span class="mono time">{fmt(player.duration)}</span>
+      {/if}
     </div>
   </div>
 
   <div class="pb-right">
     {#if t}
-      <span class="tag" title={`Fuente: ${sourceName(t.source)}`}>{quality}</span>
+      {#if quality && t.source !== 'youtube'}<span class="tag" title={`Fuente: ${sourceName(t.source)}`}>{quality}</span>{/if}
+      <button class="icon-btn sm" class:active={!!ui.sleep} onclick={(e) => openMenu(e, sleepItems())} aria-label="Temporizador para dormir" title={ui.sleep ? `Se pausa ${ui.sleep.label === 'al terminar la canción' ? 'al terminar la canción' : 'en ' + ui.sleep.label}` : 'Temporizador para dormir'}><Icon name="moon" size={18} /></button>
+      {#if !t.live}<button class="icon-btn sm" class:active={ui.lyrics && ui.fullPlayer} onclick={() => { ui.lyrics = true; ui.fpMode = 'lyrics'; ui.fullPlayer = true }} aria-label="Letra" title="Letra"><Icon name="lyrics" size={18} /></button>{/if}
       <button class="icon-btn sm" onclick={(e) => trackMenu(e, t)} aria-label="Más opciones"><Icon name="more" size={17} /></button>
     {/if}
+    <button class="icon-btn sm" class:active={ui.eqOpen} onclick={() => (ui.eqOpen = !ui.eqOpen)} aria-label="Ecualizador" title="Ecualizador"><Icon name="eq" size={18} /></button>
+    {#if !ui.settings.mobile}<button class="icon-btn sm" onclick={() => api.openMini()} aria-label="Mini reproductor" title="Mini reproductor (siempre encima)"><Icon name="mini" size={18} /></button>{/if}
+    {#if !ui.settings.mobile}<button class="icon-btn sm" class:active={!ui.queueOpen && ui.nowOpen !== false} onclick={() => { ui.queueOpen = false; ui.nowOpen = ui.nowOpen === false }} aria-label="Ahora suena" title="Ahora suena"><Icon name="disc" size={18} /></button>{/if}
     <button class="icon-btn sm" class:active={ui.queueOpen} onclick={() => (ui.queueOpen = !ui.queueOpen)} aria-label="Cola" title="Cola"><Icon name="queue" size={18} /></button>
-    <button class="icon-btn sm" onclick={mute} aria-label={vol > 0 ? 'Silenciar' : 'Activar sonido'}><Icon name={vol > 0 ? 'volume' : 'mute'} size={18} /></button>
-    <input type="range" class="range vol" min="0" max="1" step="0.01" value={vol} style={`--p:${vol * 100}%`} oninput={volInput} onchange={volCommit} aria-label="Volumen" />
+    {#if true}<button class="icon-btn sm" onclick={outputMenu} aria-label="Salida de audio" title="Salida de audio (audífonos, tele, bocinas)"><Icon name="output" size={18} /></button>{/if}
+    <Volume />
   </div>
 
   <div class="pb-mobile-ctl">

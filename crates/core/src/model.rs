@@ -28,6 +28,10 @@ pub struct Track {
     pub downloadable: bool,
     #[serde(default)]
     pub local_path: Option<String>,
+    #[serde(default)]
+    pub genre: Option<String>,
+    #[serde(default)]
+    pub live: bool,
 }
 
 impl Track {
@@ -62,6 +66,10 @@ pub struct Album {
 pub struct SearchResults {
     pub tracks: Vec<Track>,
     pub albums: Vec<Album>,
+    #[serde(default)]
+    pub stations: Vec<Track>,
+    #[serde(default)]
+    pub artists: Vec<crate::sources::ytmusic::Artist>,
     pub warnings: Vec<String>,
 }
 
@@ -78,6 +86,8 @@ pub struct Section {
     pub title: String,
     pub albums: Vec<Album>,
     pub tracks: Vec<Track>,
+    #[serde(default)]
+    pub artists: Vec<crate::sources::ytmusic::Artist>,
 }
 
 #[derive(thiserror::Error, Debug)]
