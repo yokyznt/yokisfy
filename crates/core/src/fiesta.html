@@ -38,6 +38,14 @@ button:disabled{background:#333;color:#aaa}
 #ytw{display:none;margin:0 0 12px;border-radius:12px;overflow:hidden;aspect-ratio:16/9;background:#111}
 #ytw.on{display:block}
 #ytw iframe,#ytw div{width:100%;height:100%;border:0}
+.upn{display:flex;justify-content:space-between;align-items:baseline;margin:18px 8px 0;font-weight:700}
+.upn small{color:var(--tx2);font-weight:500;font-size:12px}
+#up li{transition:transform .35s cubic-bezier(.22,1,.36,1)}
+.vote{display:flex;gap:6px;align-items:center;background:#1f1f22;color:#fff;outline:1px solid #333;min-width:64px;justify-content:center}
+.vote.mine{background:#fff;color:#000;outline:0}
+.vote svg{width:16px;height:16px}
+.skip{display:flex;gap:10px;align-items:center;margin:14px 8px 0}
+.skip small{color:var(--tx2);font-size:13px}
 </style>
 </head>
 <body>
@@ -52,17 +60,33 @@ button:disabled{background:#333;color:#aaa}
   <input id="q" type="search" placeholder="Busca una canción" autocomplete="off">
 </header>
 <ul id="list"></ul>
+<div class="skip" id="skip" hidden><button id="skipB" class="vote"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l9 7-9 7zM19 5v14"/></svg>Saltar esta</button><small id="skipN"></small></div>
+<div class="upn" id="upn" hidden>Lo que sigue <small>Vota y la más votada sube</small></div>
+<ul id="up"></ul>
 <div class="toast" id="toast"></div>
 <script>
 const $ = (id) => document.getElementById(id)
 const who = $('who')
 who.value = localStorage.getItem('yk-who') || ''
 who.oninput = () => localStorage.setItem('yk-who', who.value)
-const call = (a, body) => fetch('/yk/' + a, body ? { method: 'POST', body: JSON.stringify(body) } : {}).then((r) => r.json())
+let lost = 0, hunting = false
+async function rescue() {
+  const topic = localStorage.getItem('yk-topic')
+  if (hunting || !topic) return
+  hunting = true
+  try {
+    const t = await fetch(`https://ntfy.sh/${topic}/json?poll=1&since=24h`).then((r) => r.text())
+    const urls = t.trim().split('\n').map((l) => { try { return JSON.parse(l).message } catch { return null } }).filter((m) => m && m.startsWith('http'))
+    const u = urls[urls.length - 1]
+    if (u && new URL(u).origin !== location.origin) location.href = u.replace(/\/$/, '') + '/fiesta'
+  } catch {} finally { hunting = false }
+}
+const call = (a, body) => fetch('/yk/' + a, body ? { method: 'POST', body: JSON.stringify(body) } : {}).then((r) => { if (!r.ok) throw new Error(r.status); lost = 0; return r.json() }).catch((e) => { if (++lost >= 3) rescue(); throw e })
 function toast(t) { const e = $('toast'); e.textContent = t; e.classList.add('on'); setTimeout(() => e.classList.remove('on'), 2200) }
 async function now() {
   try {
     const n = await call('party_now')
+    if (n.topic) localStorage.setItem('yk-topic', n.topic)
     if (!n.on) { $('list').innerHTML = '<li class="off">La fiesta está cerrada. Pídele al anfitrión que la abra en Yokisfy.</li>'; return }
     $('host').textContent = `Estás en la fiesta de ${n.name}. Escucha con ellos y agrega canciones a la cola.`
     if (n.track) { $('now').hidden = false; $('nowImg').src = n.track.cover || ''; $('nowT').textContent = n.track.title; $('nowA').textContent = n.track.artist }
@@ -85,11 +109,49 @@ async function search() {
       e.target.disabled = true
       const res = await call('party_add', { track: t, from: who.value.trim() || 'Alguien' })
       e.target.textContent = res.ok ? 'En la cola' : 'No se pudo'
-      if (res.ok) toast(`Agregada: ${t.title}`)
+      if (res.ok) { toast(`Agregada: ${t.title}`); setTimeout(upnext, 400) }
     }
     ul.appendChild(li)
   }
 }
+const voter = localStorage.getItem('yk-voter') || (Math.random().toString(36).slice(2) + Date.now().toString(36))
+localStorage.setItem('yk-voter', voter)
+const UP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>'
+async function upnext() {
+  let r
+  try { r = await call('party_queue', { voter }) } catch { return }
+  const ul = $('up')
+  const items = r.queue || []
+  const sk = r.skip
+  $('skip').hidden = !sk
+  if (sk) {
+    $('skipB').classList.toggle('mine', !!sk.mine)
+    $('skipN').textContent = `${sk.votes} de ${sk.need} para saltarla`
+    $('skipB').onclick = async () => { const x = await call('party_skip', { voter }); if (x.skipped) toast('Saltada por votación'); setTimeout(upnext, 250) }
+  }
+  $('upn').hidden = !items.length
+  const before = new Map([...ul.children].map((li) => [li.dataset.id, li.getBoundingClientRect().top]))
+  ul.innerHTML = ''
+  for (const it of items) {
+    const t = it.track
+    const li = document.createElement('li')
+    li.dataset.id = t.id
+    li.innerHTML = `<img alt="" src="${t.cover || ''}"><div><b></b><span></span></div><button class="vote${it.mine ? ' mine' : ''}">${UP}<i></i></button>`
+    li.querySelector('b').textContent = t.title
+    li.querySelector('span').textContent = t.artist + (it.from ? ' · la puso ' + it.from : '')
+    li.querySelector('i').textContent = it.votes
+    li.querySelector('i').style.fontStyle = 'normal'
+    li.querySelector('button').onclick = async () => { const x = await call('party_vote', { id: t.id, voter }); if (!x.ok && x.error) toast(x.error); setTimeout(upnext, 250) }
+    ul.appendChild(li)
+  }
+  for (const li of ul.children) {
+    const b = before.get(li.dataset.id)
+    if (b == null) continue
+    const d = b - li.getBoundingClientRect().top
+    if (Math.abs(d) > 2) { li.style.transition = 'none'; li.style.transform = `translateY(${d}px)`; requestAnimationFrame(() => { li.style.transition = ''; li.style.transform = '' }) }
+  }
+}
+upnext(); setInterval(upnext, 4000)
 let on = false, cur = null, yt = null, ytReady = null, busy = false, kind = null
 const au = $('au'), vol = $('vol')
 vol.value = localStorage.getItem('yk-vol') || '0.8'

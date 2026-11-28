@@ -19,6 +19,34 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    askBattery()
+    voice(intent)
+  }
+
+  override fun onNewIntent(intent: android.content.Intent) {
+    super.onNewIntent(intent)
+    voice(intent)
+  }
+
+  private fun voice(i: android.content.Intent?) {
+    if (i?.action != android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH) return
+    val q = i.getStringExtra(android.app.SearchManager.QUERY) ?: return
+    handler.postDelayed({ MediaPlugin.say(q) }, 300)
+  }
+
+  private fun askBattery() {
+    if (android.os.Build.VERSION.SDK_INT < 23) return
+    val pm = getSystemService(android.os.PowerManager::class.java) ?: return
+    if (pm.isIgnoringBatteryOptimizations(packageName)) return
+    val prefs = getSharedPreferences("yk", MODE_PRIVATE)
+    if (prefs.getBoolean("battery_asked", false)) return
+    prefs.edit().putBoolean("battery_asked", true).apply()
+    handler.postDelayed({
+      try {
+        startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).setData(android.net.Uri.parse("package:$packageName")))
+      } catch (_: Exception) {
+      }
+    }, 4000)
   }
 
   private var insetJs = ""
@@ -48,6 +76,12 @@ class MainActivity : TauriActivity() {
 
   override fun onWebViewCreate(webView: WebView) {
     web = webView
+    if (android.os.Build.VERSION.SDK_INT >= 26) {
+      try {
+        webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+      } catch (_: Exception) {
+      }
+    }
     ViewCompat.setOnApplyWindowInsetsListener(webView) { v, insets ->
       val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
       val d = resources.displayMetrics.density
@@ -82,9 +116,22 @@ class MainActivity : TauriActivity() {
     web?.dispatchWindowVisibilityChanged(View.VISIBLE)
   }
 
+  private var away = false
+
+  private val tick = object : Runnable {
+    override fun run() {
+      if (!away) return
+      wake()
+      handler.postDelayed(this, 1000)
+    }
+  }
+
   private fun keepAlive() {
+    away = true
     wake()
-    for (d in longArrayOf(50, 250, 800, 2000)) handler.postDelayed({ wake() }, d)
+    for (d in longArrayOf(30, 120, 400)) handler.postDelayed({ wake() }, d)
+    handler.removeCallbacks(tick)
+    handler.postDelayed(tick, 1000)
   }
 
   override fun onPause() {
@@ -95,5 +142,11 @@ class MainActivity : TauriActivity() {
   override fun onStop() {
     super.onStop()
     keepAlive()
+  }
+
+  override fun onStart() {
+    super.onStart()
+    away = false
+    handler.removeCallbacks(tick)
   }
 }

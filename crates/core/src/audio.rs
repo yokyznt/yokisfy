@@ -158,7 +158,7 @@ fn run_ahead(sh: std::sync::Arc<Ahead>, mut dec: Dec) {
         }
         match c {
             Some(c) => {
-                g.cap = (c.2 as usize * c.1.max(1) as usize * 4).max(96_000);
+                g.cap = (c.2 as usize * c.1.max(1) as usize * 10).max(240_000);
                 g.samples += c.0.len();
                 g.chunks.push_back(c);
             }
@@ -222,7 +222,7 @@ impl Stream {
         let mut s = Stream { ahead, channels: first.1, rate: first.2, buf: Vec::new(), meter: [0.0; 6], an: crate::spectrum::Analyzer::new(), dsp: Default::default(), idx: 0, total };
         s.load(first);
         {
-            let need = (s.rate as usize * s.channels.max(1) as usize * 3) / 2;
+            let need = s.rate as usize * s.channels.max(1) as usize * 2;
             let deadline = std::time::Instant::now() + Duration::from_secs(5);
             let mut g = s.ahead.q.lock().unwrap();
             while g.samples < need && !g.ended {

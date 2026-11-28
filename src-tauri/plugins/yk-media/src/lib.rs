@@ -27,6 +27,16 @@ impl<R: Runtime> Media<R> {
         let _ = self.handle.run_mobile_plugin::<serde_json::Value>("update", s);
     }
 
+    pub fn speech(&self) -> Result<String, String> {
+        #[cfg(target_os = "android")]
+        {
+            let v = self.handle.run_mobile_plugin::<serde_json::Value>("speech", serde_json::json!({})).map_err(|e| e.to_string())?;
+            return Ok(v.get("text").and_then(|t| t.as_str()).unwrap_or_default().to_string());
+        }
+        #[cfg(not(target_os = "android"))]
+        Err("La voz solo funciona en el celular".into())
+    }
+
     pub fn outputs(&self) {
         #[cfg(target_os = "android")]
         let _ = self.handle.run_mobile_plugin::<serde_json::Value>("outputs", serde_json::json!({}));

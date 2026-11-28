@@ -169,8 +169,15 @@ export function openLicense(l) {
 }
 
 export async function outputMenu(e) {
-  if (ui.settings.mobile) return api.systemOutputs()
   const ev = { clientX: e.clientX, clientY: e.clientY, currentTarget: e.currentTarget }
+  if (ui.settings.mobile) {
+    const items = [{ label: 'Bocina, audífonos o Bluetooth del teléfono', icon: 'volume', action: () => api.systemOutputs() }]
+    if (ui.settings.pc_server || ui.settings.pc_code) {
+      items.push({ label: 'Pasar lo que suena a la PC', icon: 'output', action: async () => { await api.handoffSend(); toast('Ahora suena en tu PC') } })
+      items.push({ label: 'Traer lo que suena en la PC', icon: 'download', action: async () => { toast('Trayendo la música de tu PC…'); await api.handoffPull() } })
+    }
+    return openMenu(ev, items)
+  }
   const r = await api.audioOutputs()
   const pick = async (id, name) => {
     await api.setAudioOutput(id, name)
@@ -178,6 +185,7 @@ export async function outputMenu(e) {
   }
   openMenu(ev, [
     { label: `${r.current ? '' : '✓ '}Predeterminada de Windows`, icon: 'volume', action: () => pick(null, null) },
-    ...r.list.map((o) => ({ label: `${r.current === o.id ? '✓ ' : ''}${o.name}`, icon: 'volume', action: () => pick(o.id, o.name) }))
+    ...r.list.map((o) => ({ label: `${r.current === o.id ? '✓ ' : ''}${o.name}`, icon: 'volume', action: () => pick(o.id, o.name) })),
+    { label: 'Pasar al celular', icon: 'output', action: async () => { await api.handoffOffer(); toast('Abre Yokisfy en tu celular y la música se pasa sola') } }
   ])
 }

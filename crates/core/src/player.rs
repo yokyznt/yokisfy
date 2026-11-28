@@ -73,6 +73,7 @@ enum Cmd {
     PlayNext(Track),
     Jump(usize),
     Remove(usize),
+    Reorder(Vec<String>),
     Shuffle(bool),
     Repeat(String),
     Update(Track),
@@ -475,6 +476,29 @@ impl Player {
                                         queue_dirty = true;
                                     }
                                 }
+                                Cmd::Reorder(ids) => {
+                                    let rank_t = |t: &Track| ids.iter().position(|x| *x == t.id).unwrap_or(usize::MAX);
+                                    if !e.shuffle {
+                                        if let Some(c) = e.current() {
+                                            let mut rest: Vec<Track> = e.queue[c + 1..].to_vec();
+                                            rest.sort_by_key(|t| rank_t(t));
+                                            if rest.iter().map(|t| &t.id).ne(e.queue[c + 1..].iter().map(|t| &t.id)) {
+                                                e.queue.truncate(c + 1);
+                                                e.queue.extend(rest);
+                                                queue_dirty = true;
+                                            }
+                                        }
+                                    } else {
+                                        let from = (e.pos + 1).min(e.order.len());
+                                        let mut rest: Vec<usize> = e.order[from..].to_vec();
+                                        rest.sort_by_key(|o| e.queue.get(*o).map(|t| rank_t(t)).unwrap_or(usize::MAX));
+                                        if rest != e.order[from..] {
+                                            e.order.truncate(from);
+                                            e.order.extend(rest);
+                                            queue_dirty = true;
+                                        }
+                                    }
+                                }
                                 Cmd::Shuffle(s) => {
                                     e.shuffle = s;
                                     let cur = e.current();
@@ -628,6 +652,9 @@ impl Player {
         let _ = self.tx.send(c);
     }
 
+    pub fn reorder(&self, ids: Vec<String>) {
+        self.send(Cmd::Reorder(ids))
+    }
     pub fn play(&self, tracks: Vec<Track>, start: usize) {
         self.send(Cmd::Play(tracks, start))
     }

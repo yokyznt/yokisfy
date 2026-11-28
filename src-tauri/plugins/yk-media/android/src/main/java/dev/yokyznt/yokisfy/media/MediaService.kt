@@ -63,6 +63,7 @@ class MediaService : Service() {
             override fun onSkipToNext() = MediaPlugin.emit("next")
             override fun onSkipToPrevious() = MediaPlugin.emit("prev")
             override fun onSeekTo(pos: Long) = MediaPlugin.emit("seek", pos / 1000.0)
+            override fun onPlayFromSearch(query: String?, extras: android.os.Bundle?) = MediaPlugin.say(query ?: "")
         })
         session.isActive = true
         wake = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "yokisfy:play")
@@ -124,6 +125,7 @@ class MediaService : Service() {
         )
         val actions = PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_PLAY_PAUSE or
             PlaybackStateCompat.ACTION_SKIP_TO_NEXT or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+            PlaybackStateCompat.ACTION_PLAY_FROM_SEARCH or
             (if (s.duration > 0) PlaybackStateCompat.ACTION_SEEK_TO else 0L)
         session.setPlaybackState(
             PlaybackStateCompat.Builder()

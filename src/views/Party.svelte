@@ -1,4 +1,5 @@
 <script>
+  import { flip } from 'svelte/animate'
   import Icon from '../components/Icon.svelte'
   import Cover from '../components/Cover.svelte'
   import { api } from '../lib/api.js'
@@ -18,6 +19,47 @@
   let added = $state({})
   let who = $state(localStorage.getItem('yk-who') || '')
   let code = $state('')
+  let up = $state([])
+  let skip = $state(null)
+  const voter = localStorage.getItem('yk-voter') || Math.random().toString(36).slice(2) + Date.now().toString(36)
+  localStorage.setItem('yk-voter', voter)
+  let target = $derived(pick?.url || (host && info?.on ? info.url : null))
+
+  async function loadUp() {
+    if (!target) return (up = [])
+    try {
+      const r = await api.partyCall(target, 'party_queue', { voter })
+      up = r.queue || []
+      skip = r.skip || null
+    } catch {}
+  }
+
+  $effect(() => {
+    target
+    loadUp()
+    const id = setInterval(loadUp, 4000)
+    return () => clearInterval(id)
+  })
+
+  async function skipVote() {
+    try {
+      const r = await api.partyCall(target, 'party_skip', { voter })
+      if (r.skipped) toast('Saltada por votación')
+    } catch {
+      toast('No se pudo votar')
+    }
+    setTimeout(loadUp, 300)
+  }
+
+  async function vote(t) {
+    try {
+      const r = await api.partyCall(target, 'party_vote', { id: t.id, voter })
+      if (!r.ok && r.error) toast(r.error)
+    } catch {
+      toast('No se pudo votar')
+    }
+    loadUp()
+  }
   let joining = $state(false)
   let timer
   let poll
@@ -26,9 +68,9 @@
     if (ui.settings.mobile) return
     const i = await api.serverInfo()
     if (i?.on) {
-      const url = (i.public || i.url).replace(/\/$/, '') + '/fiesta'
+      const url = i.public ? i.public.replace(/\/$/, '') + '/fiesta' : null
       i.party = url
-      if (url !== info?.party) qr = await QRCode.toString(url, { type: 'svg', margin: 1, color: { dark: '#000000', light: '#ffffff' } })
+      if (url && url !== info?.party) qr = await QRCode.toString(url, { type: 'svg', margin: 1, color: { dark: '#000000', light: '#ffffff' } })
     }
     info = i
     clearTimeout(poll)
@@ -51,7 +93,10 @@
   async function join() {
     joining = true
     try {
-      const s = await api.partyJoin(code)
+      const c = code
+      const s = await api.partyJoin(c)
+      s.code = c
+      localStorage.setItem('yk-party-join', c)
       hosts = [...(hosts || []).filter((h) => h.url !== s.url), s]
       pick = s
       code = ''
@@ -64,7 +109,7 @@
 
   function listen() {
     if (together.on && together.url === pick.url) stopTogether()
-    else startTogether(pick.url, pick.name)
+    else startTogether(pick.url, pick.name, pick.code || '')
   }
 
   async function toggleHost() {
@@ -74,13 +119,17 @@
   }
 
   async function findHosts() {
+    const last = localStorage.getItem('yk-party-join')
+    if (!last || pick) return (hosts = hosts || [])
     hosts = null
     try {
-      hosts = await api.partyHosts()
+      const s = await api.partyJoin(last)
+      s.code = last
+      hosts = [s]
+      pick = s
     } catch {
       hosts = []
     }
-    if (hosts.length === 1) pick = hosts[0]
   }
 
   refreshHost()
@@ -108,6 +157,7 @@
       if (r.ok) {
         added[t.id] = true
         toast(`Agregada a la fiesta: ${t.title}`)
+        setTimeout(loadUp, 400)
       }
     } catch {
       toast('No se pudo agregar')
@@ -127,21 +177,23 @@
         <span class="set-name">Abrir mi fiesta en esta PC</span>
         <button class="switch" role="switch" aria-checked={host} aria-label="Abrir fiesta" onclick={toggleHost}><i></i></button>
       </div>
-      {#if host && info?.party}
+      {#if host && info?.on}
         <div class="pt-share">
-          <div class="pt-qr" aria-label="Código QR de la fiesta">{@html qr}</div>
+          {#if info.party && qr}<div class="pt-qr" aria-label="Código QR de la fiesta">{@html qr}</div>{/if}
           <div>
             <h2 class="h2">Invita a tus amigos</h2>
             {#if info.public}
               <p>Que escaneen el código o mándales el enlace. Funciona desde cualquier lugar, con datos o en otro Wi‑Fi, y no necesitan instalar nada: escuchan contigo y agregan canciones.</p>
             {:else}
-              <p>Por ahora solo funciona en tu Wi‑Fi. <span class="spin"></span> {info.tunnel || 'Conectando por internet…'}</p>
+              <p><span class="spin"></span> {info.tunnel || 'Preparando el enlace por internet…'}</p>
             {/if}
+            {#if info.party}
             <p class="mono pt-url">{info.party}</p>
             <div class="pt-act">
               <button class="btn primary" onclick={share}>{navigator.share ? 'Compartir enlace' : 'Copiar enlace'}</button>
               {#if info.party_code}<span class="pt-code">Código para Yokisfy: <b class="mono">{info.party_code.slice(0, 3)}-{info.party_code.slice(3)}</b></span>{/if}
             </div>
+            {/if}
             <p class="sub">Cuando alguien agregue una canción te sale un aviso.</p>
           </div>
         </div>
@@ -152,16 +204,15 @@
   <section class="pt-guest">
     <div class="sec-head">
       <h2 class="h2">Unirme a una fiesta</h2>
-      <button class="btn ghost" onclick={findHosts}><Icon name="repeat" size={16} /> Buscar</button>
     </div>
     <form class="pt-join" onsubmit={(e) => { e.preventDefault(); join() }}>
       <input class="field mono" bind:value={code} placeholder="Código de la fiesta (abc-def)" aria-label="Código de la fiesta" autocapitalize="off" spellcheck="false" />
       <button class="btn primary" disabled={joining || code.replace(/[^a-z0-9]/gi, '').length < 6}>{joining ? 'Buscando…' : 'Unirme'}</button>
     </form>
     {#if hosts === null}
-      <p class="empty"><span class="spin"></span> Buscando fiestas en tu Wi‑Fi…</p>
+      <p class="empty"><span class="spin"></span> Buscando la última fiesta a la que entraste…</p>
     {:else if !hosts.length}
-      <p class="empty">No hay fiestas en tu Wi‑Fi. Si es a distancia, escribe arriba el código que te pasaron.</p>
+      <p class="empty">Escribe el código que te pasaron. Funciona desde cualquier lugar, con datos o en otro Wi‑Fi.</p>
     {:else}
       <div class="pt-hosts">
         {#each hosts as h}
@@ -192,4 +243,26 @@
       </ul>
     {/if}
   </section>
+
+  {#if skip && target}
+    <div class="set-row pt-skip">
+      <span class="set-name">¿No les late esta? Si la mitad vota, se salta <small class="mono">{skip.votes} de {skip.need}</small></span>
+      <button class="btn sm" class:primary={skip.mine} onclick={skipVote}><Icon name="next" size={15} /> {skip.mine ? 'Quitar voto' : 'Saltar'}</button>
+    </div>
+  {/if}
+
+  {#if up.length}
+    <section class="pt-up">
+      <div class="sec-head"><h2 class="h2">Lo que sigue</h2><span class="sub">Vota y la más votada sube</span></div>
+      <ul class="pt-res">
+        {#each up as it (it.track.id)}
+          <li animate:flip={{ duration: 350 }}>
+            <Cover src={it.track.cover} size={44} radius={6} />
+            <span class="st-t"><b>{it.track.title}</b><span>{it.track.artist}{it.from ? ` · la puso ${it.from}` : ''}</span></span>
+            <button class="btn sm pt-vote" class:primary={it.mine} onclick={() => vote(it.track)} aria-label={`${it.mine ? 'Quitar voto' : 'Votar'} por ${it.track.title}`}><Icon name="up" size={15} /> {it.votes}</button>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
 </div>

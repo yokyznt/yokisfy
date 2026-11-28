@@ -23,14 +23,16 @@
   import Party from './views/Party.svelte'
   import Equalizer from './components/Equalizer.svelte'
   import MiniPlayer from './components/MiniPlayer.svelte'
+  import CarMode from './components/CarMode.svelte'
   import { boot, api } from './lib/api.js'
-  import { ui, player, go, root, back, setTheme, isLight, look, paintAccent } from './lib/state.svelte.js'
+  import { ui, player, go, root, back, setTheme, isLight, look, paintAccent, toast } from './lib/state.svelte.js'
   import { paletteFor } from './lib/palette.js'
   import { newPlaylist, importSpotify } from './lib/actions.js'
 
   if (typeof window !== 'undefined') {
     window.__ykBack = () => {
       if (ui.menu) return !(ui.menu = null)
+      if (ui.car) return !(ui.car = false)
       if (ui.eqOpen) return !(ui.eqOpen = false)
       if (ui.fullPlayer) return !(ui.fullPlayer = false)
       if (ui.queueOpen) return !(ui.queueOpen = false)
@@ -103,6 +105,21 @@
       api.prev()
     }
   }
+
+  $effect(() => {
+    if (!ready || !ui.settings.mobile || !(ui.settings.pc_server || ui.settings.pc_code)) return
+    let wait = 0
+    const id = setInterval(async () => {
+      if (document.visibilityState !== 'visible') return
+      if (wait > 0) return wait--
+      try {
+        if (await api.handoffPoll()) toast('Tu PC te pasó la música')
+      } catch {
+        wait = 12
+      }
+    }, 5000)
+    return () => clearInterval(id)
+  })
 </script>
 
 <svelte:window onkeydown={onKey} />
@@ -194,6 +211,7 @@
 </div>
 
 <FullPlayer />
+<CarMode />
 <Menu />
 <Overlays />
 {#if isMainWin}<YtPlayer />{/if}

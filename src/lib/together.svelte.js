@@ -1,7 +1,7 @@
 import { api } from './api.js'
 import { player, toast } from './state.svelte.js'
 
-export const together = $state({ on: false, url: '', name: '', drift: 0 })
+export const together = $state({ on: false, url: '', name: '', drift: 0, code: '' })
 
 let timer = null
 let cur = null
@@ -22,7 +22,19 @@ async function tick() {
       n = await api.partyCall(together.url, 'party_now')
       fails = 0
     } catch {
-      if (++fails > 6) {
+      fails++
+      if (together.code && fails % 3 === 0) {
+        try {
+          const s = await api.partyJoin(together.code)
+          if (s?.url && s.url !== together.url) {
+            together.url = s.url
+            cur = null
+            fails = 0
+            return
+          }
+        } catch {}
+      }
+      if (fails > 15) {
         stopTogether()
         toast('Se perdió la conexión con la fiesta')
       }
@@ -55,9 +67,9 @@ async function tick() {
   }
 }
 
-export function startTogether(url, name) {
+export function startTogether(url, name, code = '') {
   stopTogether()
-  Object.assign(together, { on: true, url, name, drift: 0 })
+  Object.assign(together, { on: true, url, name, drift: 0, code })
   cur = null
   fails = 0
   tick()

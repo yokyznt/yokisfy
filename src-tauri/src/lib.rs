@@ -198,6 +198,201 @@ async fn download(app: AppHandle, core: C<'_>, track: Track, kind: Option<String
 }
 
 static LAST_STATUS: std::sync::Mutex<Option<serde_json::Value>> = std::sync::Mutex::new(None);
+static HANDOFF: std::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>> = std::sync::Mutex::new(None);
+
+fn play_snap() -> Option<serde_json::Value> {
+    let status = LAST_STATUS.lock().ok().and_then(|g| g.clone())?;
+    let track = status.get("track").cloned().filter(|t| !t.is_null())?;
+    let mut tracks = vec![track];
+    tracks.extend(upcoming().into_iter().take(200));
+    let playing = status.get("playing").and_then(|v| v.as_bool()).unwrap_or(false);
+    Some(json!({ "tracks": tracks, "position": now_position(&Some(status)), "playing": playing }))
+}
+
+async fn take_over(core: Arc<Core>, snap: serde_json::Value) -> bool {
+    let tracks: Vec<Track> = serde_json::from_value(snap.get("tracks").cloned().unwrap_or_default()).unwrap_or_default();
+    if tracks.is_empty() {
+        return false;
+    }
+    let id = tracks[0].id.clone();
+    let pos = snap.get("position").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let playing = snap.get("playing").and_then(|v| v.as_bool()).unwrap_or(true);
+    core.player.play(core.lib.resolve(tracks), 0);
+    for _ in 0..60 {
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        let ready = LAST_STATUS.lock().ok().and_then(|g| g.clone()).map(|s| s.get("track").and_then(|t| t.get("id")).and_then(|v| v.as_str()) == Some(id.as_str()) && !s.get("loading").and_then(|v| v.as_bool()).unwrap_or(true)).unwrap_or(false);
+        if ready {
+            break;
+        }
+    }
+    if pos > 2.0 {
+        core.player.seek(pos);
+    }
+    if !playing {
+        core.player.set_playing(false);
+    }
+    true
+}
+
+#[tauri::command]
+async fn handoff_send(core: C<'_>) -> R<serde_json::Value> {
+    let snap = play_snap().ok_or_else(|| yokisfy_core::Error::Msg("No hay nada sonando".into()))?;
+    let r = core.pc_call("take", snap).await?;
+    if r.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+        core.player.set_playing(false);
+    }
+    Ok(r)
+}
+
+#[tauri::command]
+async fn handoff_pull(core: C<'_>) -> R<bool> {
+    let r = core.pc_call("give", serde_json::Value::Null).await?;
+    if r.is_null() || r.get("tracks").is_none() {
+        return Err(yokisfy_core::Error::Msg("En la PC no está sonando nada".into()));
+    }
+    Ok(take_over(core.inner().clone(), r).await)
+}
+
+#[tauri::command]
+async fn handoff_offer() -> R<bool> {
+    let snap = play_snap().ok_or_else(|| yokisfy_core::Error::Msg("No hay nada sonando".into()))?;
+    *HANDOFF.lock().unwrap() = Some((std::time::Instant::now(), snap));
+    Ok(true)
+}
+
+#[tauri::command]
+async fn handoff_poll(core: C<'_>) -> R<bool> {
+    let r = core.pc_call("handoff", serde_json::Value::Null).await?;
+    if r.is_null() || r.get("tracks").is_none() {
+        return Ok(false);
+    }
+    Ok(take_over(core.inner().clone(), r).await)
+}
+
+#[tauri::command]
+async fn speech(app: AppHandle) -> R<String> {
+    #[cfg(mobile)]
+    {
+        use tauri_plugin_yk_media::MediaExt;
+        let h = app.clone();
+        return tauri::async_runtime::spawn_blocking(move || h.media().speech()).await?;
+    }
+    #[cfg(not(mobile))]
+    {
+        let _ = app;
+        Err(yokisfy_core::Error::Msg("La voz solo funciona en el celular".into()))
+    }
+}
+
+static SKIPS: std::sync::Mutex<Option<(String, std::collections::HashSet<String>)>> = std::sync::Mutex::new(None);
+static SEEN: std::sync::Mutex<Option<std::collections::HashMap<String, std::time::Instant>>> = std::sync::Mutex::new(None);
+
+fn seen(voter: &str) -> usize {
+    let mut g = SEEN.lock().unwrap();
+    let m = g.get_or_insert_with(Default::default);
+    if !voter.is_empty() {
+        m.insert(voter.to_string(), std::time::Instant::now());
+    }
+    m.retain(|_, t| t.elapsed().as_secs() < 30);
+    m.len()
+}
+
+fn current_id() -> Option<String> {
+    LAST_STATUS.lock().ok().and_then(|g| g.clone()).and_then(|s| s.get("track").and_then(|t| t.get("id")).and_then(|v| v.as_str()).map(String::from))
+}
+
+fn skip_info(voter: &str) -> serde_json::Value {
+    let Some(cur) = current_id() else { return serde_json::Value::Null };
+    let people = seen(voter).max(1);
+    let need = people.div_ceil(2);
+    let g = SKIPS.lock().unwrap();
+    let (n, mine) = match g.as_ref().filter(|(id, _)| *id == cur) {
+        Some((_, v)) => (v.len(), v.contains(voter)),
+        None => (0, false),
+    };
+    json!({ "votes": n, "need": need, "mine": mine, "people": people })
+}
+
+fn party_skip(core: &Core, voter: &str) -> serde_json::Value {
+    let Some(cur) = current_id() else { return json!({ "ok": false }) };
+    if voter.is_empty() {
+        return json!({ "ok": false });
+    }
+    let need = seen(voter).max(1).div_ceil(2);
+    let hit = {
+        let mut g = SKIPS.lock().unwrap();
+        if g.as_ref().map(|(id, _)| *id != cur).unwrap_or(true) {
+            *g = Some((cur.clone(), Default::default()));
+        }
+        let set = &mut g.as_mut().unwrap().1;
+        if !set.remove(voter) {
+            set.insert(voter.to_string());
+        }
+        let hit = set.len() >= need;
+        if hit {
+            *g = None;
+        }
+        hit
+    };
+    if hit {
+        core.player.next();
+    }
+    json!({ "ok": true, "skipped": hit })
+}
+
+static VOTES: std::sync::Mutex<Option<std::collections::HashMap<String, (std::collections::HashSet<String>, String)>>> = std::sync::Mutex::new(None);
+
+fn upcoming() -> Vec<serde_json::Value> {
+    let Some(q) = LAST_QUEUE.lock().ok().and_then(|g| g.clone()) else { return vec![] };
+    let i = q.get("index").and_then(|v| v.as_u64()).map(|v| v as usize);
+    let all = q.get("tracks").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    match i {
+        Some(i) => all.into_iter().skip(i + 1).collect(),
+        None => vec![],
+    }
+}
+
+fn party_queue(voter: &str) -> serde_json::Value {
+    let up = upcoming();
+    let mut g = VOTES.lock().unwrap();
+    let m = g.get_or_insert_with(Default::default);
+    let ids: std::collections::HashSet<String> = up.iter().filter_map(|t| t.get("id").and_then(|v| v.as_str()).map(String::from)).collect();
+    m.retain(|k, _| ids.contains(k));
+    let list: Vec<serde_json::Value> = up
+        .iter()
+        .take(40)
+        .map(|t| {
+            let id = t.get("id").and_then(|v| v.as_str()).unwrap_or_default();
+            let (n, mine, from) = m.get(id).map(|(v, f)| (v.len(), v.contains(voter), f.clone())).unwrap_or((0, false, String::new()));
+            json!({ "track": t, "votes": n, "mine": mine, "from": from })
+        })
+        .collect();
+    json!({ "queue": list, "skip": skip_info(voter) })
+}
+
+fn party_vote(core: &Core, id: &str, voter: &str) -> serde_json::Value {
+    if voter.is_empty() || id.is_empty() {
+        return json!({ "ok": false });
+    }
+    let up = upcoming();
+    if !up.iter().any(|t| t.get("id").and_then(|v| v.as_str()) == Some(id)) {
+        return json!({ "ok": false, "error": "Esa canción ya no está en la cola" });
+    }
+    let order: Vec<String> = {
+        let mut g = VOTES.lock().unwrap();
+        let m = g.get_or_insert_with(Default::default);
+        let e = m.entry(id.to_string()).or_default();
+        if !e.0.remove(voter) {
+            e.0.insert(voter.to_string());
+        }
+        let mut ids: Vec<(usize, usize, String)> = up.iter().enumerate().filter_map(|(i, t)| t.get("id").and_then(|v| v.as_str()).map(|s| (m.get(s).map(|x| x.0.len()).unwrap_or(0), i, s.to_string()))).collect();
+        ids.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        ids.into_iter().map(|x| x.2).collect()
+    };
+    core.player.reorder(order);
+    json!({ "ok": true })
+}
+
 static LAST_AT: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
 
 fn now_position(status: &Option<serde_json::Value>) -> f64 {
@@ -443,7 +638,7 @@ fn tunnel(core: &Core, port: Option<u16>) {
             old.store(true, std::sync::atomic::Ordering::Relaxed);
         }
         let Some(port) = port else { return };
-        if !cfg!(desktop) || core.lib.setting("internet").as_deref() == Some("off") {
+        if !cfg!(desktop) {
             return;
         }
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -777,7 +972,47 @@ fn remote(app: AppHandle) -> server::Remote {
                     });
                     let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
                     let g = |k: &str| status.as_ref().and_then(|s| s.get(k).cloned()).unwrap_or(serde_json::Value::Null);
-                    json!({ "on": on, "name": server::host_name(), "track": track, "src": src, "position": now_position(&status), "playing": g("playing"), "loading": g("loading"), "duration": g("duration"), "ts": ms })
+                    json!({ "on": on, "name": server::host_name(), "track": track, "src": src, "position": now_position(&status), "playing": g("playing"), "loading": g("loading"), "duration": g("duration"), "ts": ms, "topic": core.lib.setting("party_code").filter(|c| !c.is_empty()).map(|c| yokisfy_core::pc::topic(&format!("fiesta{c}"))) })
+                }
+                "party_queue" => party_queue(&s("voter")),
+                "take" => {
+                    if let Err(e) = serde_json::from_value::<Vec<Track>>(arg.get("tracks").cloned().unwrap_or_default()) {
+                        return json!({ "ok": false, "error": e.to_string(), "keys": arg.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()) });
+                    }
+                    let ok = take_over(core.clone(), arg.clone()).await;
+                    if ok {
+                        let _ = app.emit("handoff-in", json!({}));
+                    }
+                    json!({ "ok": ok })
+                }
+                "give" => {
+                    let snap = play_snap();
+                    if snap.is_some() {
+                        core.player.set_playing(false);
+                    }
+                    snap.unwrap_or(serde_json::Value::Null)
+                }
+                "handoff" => {
+                    let got = HANDOFF.lock().unwrap().take().filter(|(t, _)| t.elapsed().as_secs() < 120).map(|(_, v)| v);
+                    if got.is_some() {
+                        core.player.set_playing(false);
+                        let _ = app.emit("handoff-out", json!({}));
+                    }
+                    got.unwrap_or(serde_json::Value::Null)
+                }
+                "party_skip" => {
+                    let r = party_skip(&core, &s("voter"));
+                    if r.get("skipped").and_then(|v| v.as_bool()) == Some(true) {
+                        let _ = app.emit("party-skip", json!({}));
+                    }
+                    r
+                }
+                "party_vote" => {
+                    let r = party_vote(&core, &s("id"), &s("voter"));
+                    if r.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+                        let _ = app.emit("party-vote", json!({}));
+                    }
+                    r
                 }
                 "party_track" => {
                     let id = s("id");
@@ -801,6 +1036,9 @@ fn remote(app: AppHandle) -> server::Remote {
                         core.play(vec![t.clone()], 0);
                     } else {
                         core.player.enqueue(core.lib.resolve(vec![t.clone()]));
+                    }
+                    if let Ok(mut g) = VOTES.lock() {
+                        g.get_or_insert_with(Default::default).entry(t.id.clone()).or_default().1 = from.clone();
                     }
                     let _ = app.emit("party-add", json!({ "from": from, "title": t.title, "artist": t.artist }));
                     json!({ "ok": true })
@@ -854,7 +1092,7 @@ async fn server_info(core: C<'_>, srv: State<'_, Srv>) -> R<serde_json::Value> {
     Ok(match g.as_ref() {
         Some(h) => {
             let p = server_password(&core);
-            json!({ "on": true, "url": format!("http://{}:{}", server::lan_ip().unwrap_or_else(|| "localhost".into()), h.port), "user": server::USER, "password": p, "code": format!("{}-{}", &p[..p.len() / 2], &p[p.len() / 2..]), "internet": core.lib.setting("internet").as_deref() != Some("off"), "name": server::host_name(), "public": yokisfy_core::pc::public_url(), "tunnel": yokisfy_core::pc::tunnel_state(), "party_code": core.lib.setting("party_code"), "discord": cfg!(desktop) && discord_ok(), "discord_state": discord_state() })
+            json!({ "on": true, "url": format!("http://{}:{}", server::lan_ip().unwrap_or_else(|| "localhost".into()), h.port), "user": server::USER, "password": p, "code": format!("{}-{}", &p[..p.len() / 2], &p[p.len() / 2..]), "internet": true, "name": server::host_name(), "public": yokisfy_core::pc::public_url(), "tunnel": yokisfy_core::pc::tunnel_state(), "party_code": core.lib.setting("party_code"), "discord": cfg!(desktop) && discord_ok(), "discord_state": discord_state() })
         }
         None => json!({ "on": false }),
     })
@@ -993,8 +1231,15 @@ pub fn run() {
             {
                 use tauri_plugin_yk_media::MediaExt;
                 let c2 = core.clone();
+                let h2 = app.handle().clone();
                 app.media().listen(move |v| {
                     match v["action"].as_str().unwrap_or("") {
+                        "bt" => {
+                            let _ = h2.emit("bt", v.clone());
+                        }
+                        "voice" => {
+                            let _ = h2.emit("voice", v.clone());
+                        }
                         "play" => c2.player.set_playing(true),
                         "pause" => c2.player.set_playing(false),
                         "next" => c2.player.next(),
@@ -1044,7 +1289,7 @@ pub fn run() {
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, format_sizes, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, pc_link, party_join, quick_search, image_data, save_image, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, system_outputs, spectrum, boost, get_boost, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
+            import_spotify, pc_link, party_join, handoff_send, handoff_pull, handoff_offer, handoff_poll, speech, quick_search, image_data, save_image, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, system_outputs, spectrum, boost, get_boost, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");
