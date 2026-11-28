@@ -178,7 +178,13 @@ export async function outputMenu(e) {
     }
     return openMenu(ev, items)
   }
-  const r = await api.audioOutputs()
+  const [r, tv] = await Promise.all([api.audioOutputs(), api.tvCurrent().catch(() => null)])
+  const findTv = async () => {
+    toast('Buscando teles en tu casa…')
+    const list = await api.tvList()
+    if (!list.length) return toast('No encontré teles. Revisa que la tele esté prendida y en el mismo Wi‑Fi que la PC')
+    openMenu(ev, list.map((t) => ({ label: t.name, icon: 'output', action: async () => { await api.tvConnect(t); toast(`Sonando en ${t.name}`) } })))
+  }
   const pick = async (id, name) => {
     await api.setAudioOutput(id, name)
     toast(name ? `Sonando en ${name}` : 'Sonando en la salida de Windows')
@@ -186,6 +192,7 @@ export async function outputMenu(e) {
   openMenu(ev, [
     { label: `${r.current ? '' : '✓ '}Predeterminada de Windows`, icon: 'volume', action: () => pick(null, null) },
     ...r.list.map((o) => ({ label: `${r.current === o.id ? '✓ ' : ''}${o.name}`, icon: 'volume', action: () => pick(o.id, o.name) })),
+    tv ? { label: `✓ ${tv.name} · dejar de mandar a la tele`, icon: 'output', action: async () => { await api.tvDisconnect(); toast('Volvió a sonar en la PC') } } : { label: 'Mandar a la tele…', icon: 'output', action: findTv },
     { label: 'Pasar al celular', icon: 'output', action: async () => { await api.handoffOffer(); toast('Abre Yokisfy en tu celular y la música se pasa sola') } }
   ])
 }

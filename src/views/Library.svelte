@@ -12,8 +12,8 @@
   <div class="sec-head">
     <h1 class="h1">Tu biblioteca</h1>
     <div class="sec-actions">
-      <button class="btn ghost" onclick={() => importSpotify()} disabled={!!ui.importing}><Icon name="download" size={16} /> Importar playlist</button>
-      <button class="btn ghost" onclick={() => newPlaylist()}><Icon name="plus" size={16} /> Nueva playlist</button>
+      <button class="btn ghost" onclick={() => importSpotify()} disabled={!!ui.importing} aria-label="Importar playlist" title="Importar playlist"><Icon name="download" size={16} /> <span class="btn-label">Importar playlist</span></button>
+      <button class="btn ghost" onclick={() => newPlaylist()} aria-label="Nueva playlist" title="Nueva playlist"><Icon name="plus" size={16} /> <span class="btn-label">Nueva playlist</span></button>
     </div>
   </div>
   <div class="rows">

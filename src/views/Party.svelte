@@ -206,7 +206,7 @@
       <h2 class="h2">Unirme a una fiesta</h2>
     </div>
     <form class="pt-join" onsubmit={(e) => { e.preventDefault(); join() }}>
-      <input class="field mono" bind:value={code} placeholder="Código de la fiesta (abc-def)" aria-label="Código de la fiesta" autocapitalize="off" spellcheck="false" />
+      <input class="field mono" bind:value={code} placeholder="abc-def" aria-label="Código de la fiesta" autocapitalize="off" spellcheck="false" />
       <button class="btn primary" disabled={joining || code.replace(/[^a-z0-9]/gi, '').length < 6}>{joining ? 'Buscando…' : 'Unirme'}</button>
     </form>
     {#if hosts === null}

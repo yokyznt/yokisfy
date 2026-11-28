@@ -15,6 +15,7 @@ pub mod player;
 pub mod server;
 pub mod sources;
 pub mod spectrum;
+pub mod tv;
 
 use library::Library;
 pub use model::*;

@@ -33,6 +33,10 @@ export const api = {
   volume: (v) => call('volume', { v }),
   boost: (db) => call('boost', { db }),
   systemOutputs: () => call('system_outputs'),
+  tvList: () => call('tv_list'),
+  tvConnect: (tv) => call('tv_connect', { tv }),
+  tvDisconnect: () => call('tv_disconnect'),
+  tvCurrent: () => invoke('tv_current'),
   handoffSend: () => call('handoff_send'),
   handoffPull: () => call('handoff_pull'),
   handoffOffer: () => call('handoff_offer'),
@@ -114,6 +118,7 @@ export async function boot() {
   await listen('import', (e) => {
     if (ui.importing) ui.importing = e.payload
   })
+  await listen('tv-error', (e) => toast(String(e.payload)))
   await listen('handoff-out', () => toast('La música pasó a tu celular'))
   await listen('handoff-in', () => toast('La música llegó desde tu celular'))
   await listen('party-skip', () => toast('Tus amigos votaron y se saltó la canción'))

@@ -5457,3 +5457,88 @@ a:focus-visible {
   gap: 8px;
   justify-content: flex-end;
 }
+
+.set-val {
+  font-variant-numeric: tabular-nums;
+  color: var(--tx);
+}
+
+@media (max-width: 640px) {
+  .sec-head .btn-label {
+    display: none;
+  }
+
+  .sec-head .sec-actions .btn {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 999px;
+  }
+}
+
+.view-in :is(.tiles, .grid, .rows, .tl, .chips-grid, .genres) > * {
+  animation: yk-rise 0.5s var(--ease) both;
+}
+
+.view-in :is(.tiles, .grid, .rows, .tl) > :nth-child(2) { animation-delay: 30ms; }
+.view-in :is(.tiles, .grid, .rows, .tl) > :nth-child(3) { animation-delay: 60ms; }
+.view-in :is(.tiles, .grid, .rows, .tl) > :nth-child(4) { animation-delay: 90ms; }
+.view-in :is(.tiles, .grid, .rows, .tl) > :nth-child(5) { animation-delay: 120ms; }
+.view-in :is(.tiles, .grid, .rows, .tl) > :nth-child(6) { animation-delay: 150ms; }
+.view-in :is(.tiles, .grid, .rows, .tl) > :nth-child(7) { animation-delay: 180ms; }
+.view-in :is(.tiles, .grid, .rows, .tl) > :nth-child(8) { animation-delay: 210ms; }
+.view-in :is(.tiles, .grid, .rows, .tl) > :nth-child(9) { animation-delay: 240ms; }
+.view-in :is(.tiles, .grid, .rows, .tl) > :nth-child(n + 10) { animation-delay: 270ms; }
+
+@keyframes yk-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+
+.tile,
+.card,
+.lrow,
+.tl-row {
+  transition: transform 0.25s var(--ease), background-color 0.2s;
+}
+
+@media (hover: hover) {
+  .tile:hover,
+  .card:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.tile:active,
+.icon-btn:active,
+.chip:active {
+  transform: scale(0.97);
+}
+
+.lrow:active,
+.tl-main:active {
+  transform: scale(0.99);
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.28s;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view-in :is(.tiles, .grid, .rows, .tl, .chips-grid, .genres) > *,
+  .view-in {
+    animation: none !important;
+  }
+
+  .tile,
+  .card,
+  .lrow,
+  .tl-row {
+    transition: none;
+  }
+}

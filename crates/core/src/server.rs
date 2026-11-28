@@ -25,6 +25,12 @@ pub type Remote = Arc<dyn Fn(String, Value) -> futures_util::future::BoxFuture<'
 
 pub static PARTY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+pub static CAST_KEY: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    use md5::Digest;
+    let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    md5::Md5::digest(format!("yk-cast-{n}-{}", std::process::id()).as_bytes()).iter().take(12).map(|b| format!("{b:02x}")).collect()
+});
+
 struct Ctx {
     lib: Arc<Library>,
     password: String,
@@ -324,10 +330,10 @@ async fn yk(State(ctx): State<Arc<Ctx>>, axum::extract::Path(action): axum::extr
 static PROXY: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::new(|| reqwest::Client::builder().user_agent("Mozilla/5.0 Yokisfy").build().unwrap_or_default());
 
 async fn party_audio(State(ctx): State<Arc<Ctx>>, axum::extract::RawQuery(raw): axum::extract::RawQuery, req: Request) -> Response {
-    if !PARTY.load(std::sync::atomic::Ordering::Relaxed) {
+    let q = url_params(raw.as_deref().unwrap_or(""));
+    if !PARTY.load(std::sync::atomic::Ordering::Relaxed) && q.get("k").map(|k| k != CAST_KEY.as_str()).unwrap_or(true) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let q = url_params(raw.as_deref().unwrap_or(""));
     let Some(remote) = ctx.remote.clone() else { return StatusCode::NOT_FOUND.into_response() };
     let v = remote("party_track".into(), json!({ "id": q.get("id").cloned().unwrap_or_default() })).await;
     let Ok(t) = serde_json::from_value::<Track>(v) else { return StatusCode::NOT_FOUND.into_response() };

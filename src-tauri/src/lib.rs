@@ -284,6 +284,132 @@ async fn speech(app: AppHandle) -> R<String> {
     }
 }
 
+struct TvLink {
+    tv: yokisfy_core::tv::Tv,
+    id: String,
+    playing: bool,
+    vol: f32,
+}
+
+static TV: std::sync::Mutex<Option<TvLink>> = std::sync::Mutex::new(None);
+static TV_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static TV_DIRTY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[tauri::command]
+async fn tv_list(core: C<'_>) -> R<Vec<yokisfy_core::tv::Tv>> {
+    Ok(yokisfy_core::tv::discover(&core.client).await)
+}
+
+#[tauri::command]
+async fn tv_connect(app: AppHandle, core: C<'_>, tv: yokisfy_core::tv::Tv) -> R<bool> {
+    if app.state::<Srv>().lock().await.is_none() {
+        let _ = core.lib.set_setting("share_library", "on");
+        apply_server(&app).await;
+    }
+    let vol = core.lib.setting("volume").and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.8);
+    let old = TV.lock().unwrap().replace(TvLink { tv, id: String::new(), playing: false, vol });
+    if let Some(o) = old {
+        let c = core.client.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = yokisfy_core::tv::stop(&c, &o.tv.control).await;
+        });
+    }
+    core.player.volume(0.0);
+    tv_kick(app.clone());
+    Ok(true)
+}
+
+#[tauri::command]
+async fn tv_disconnect(core: C<'_>) -> R<bool> {
+    let old = TV.lock().unwrap().take();
+    if let Some(o) = old {
+        let _ = yokisfy_core::tv::stop(&core.client, &o.tv.control).await;
+        core.player.volume(o.vol);
+    }
+    Ok(true)
+}
+
+#[tauri::command]
+fn tv_current() -> Option<yokisfy_core::tv::Tv> {
+    TV.lock().ok().and_then(|g| g.as_ref().map(|l| l.tv.clone()))
+}
+
+fn tv_kick(app: AppHandle) {
+    if TV.lock().map(|g| g.is_none()).unwrap_or(true) {
+        return;
+    }
+    TV_DIRTY.store(true, std::sync::atomic::Ordering::SeqCst);
+    if TV_BUSY.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        while TV_DIRTY.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            tv_sync(&app).await;
+        }
+        TV_BUSY.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+}
+
+async fn tv_sync(app: &AppHandle) {
+    let core = app.state::<Arc<Core>>().inner().clone();
+    let Some(status) = LAST_STATUS.lock().ok().and_then(|g| g.clone()) else { return };
+    let Some(track) = status.get("track").cloned().filter(|t| !t.is_null()) else { return };
+    let id = track.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let playing = status.get("playing").and_then(|v| v.as_bool()).unwrap_or(false);
+    let Some((control, last_id, last_playing)) = TV.lock().ok().and_then(|g| g.as_ref().map(|l| (l.tv.control.clone(), l.id.clone(), l.playing))) else { return };
+    let c = core.client.clone();
+    if id != last_id {
+        if track.get("source").and_then(|v| v.as_str()) == Some("youtube") {
+            let _ = app.emit("tv-error", "Las canciones de YouTube no se pueden mandar a la tele; pon una de las fuentes libres o una descargada");
+            if let Ok(mut g) = TV.lock() {
+                if let Some(l) = g.as_mut() {
+                    l.id = id;
+                }
+            }
+            return;
+        }
+        let port = app.state::<Srv>().lock().await.as_ref().map(|h| h.port);
+        let (Some(port), Some(ip)) = (port, server::lan_ip()) else {
+            let _ = app.emit("tv-error", "No pude preparar la canción para la tele");
+            return;
+        };
+        let url = format!("http://{ip}:{port}/party/audio?id={}&k={}", urlencoding::encode(&id), server::CAST_KEY.as_str());
+        let path = track.get("localPath").and_then(|v| v.as_str()).unwrap_or_default().to_lowercase();
+        let mime = if path.ends_with(".flac") { "audio/flac" } else if path.ends_with(".ogg") || path.ends_with(".opus") { "audio/ogg" } else if path.ends_with(".m4a") { "audio/mp4" } else { "audio/mpeg" };
+        let s = |k: &str| track.get(k).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        match yokisfy_core::tv::load(&c, &control, &url, &s("title"), &s("artist"), track.get("cover").and_then(|v| v.as_str()), mime).await {
+            Ok(()) => {
+                let pos = now_position(&Some(status.clone()));
+                if pos > 3.0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                    let _ = yokisfy_core::tv::seek(&c, &control, pos).await;
+                }
+                if !playing {
+                    let _ = yokisfy_core::tv::pause(&c, &control).await;
+                }
+            }
+            Err(e) => {
+                let _ = app.emit("tv-error", e);
+            }
+        }
+        if let Ok(mut g) = TV.lock() {
+            if let Some(l) = g.as_mut() {
+                l.id = id;
+                l.playing = playing;
+            }
+        }
+        return;
+    }
+    if playing != last_playing {
+        let _ = if playing { yokisfy_core::tv::play(&c, &control).await } else { yokisfy_core::tv::pause(&c, &control).await };
+        if let Ok(mut g) = TV.lock() {
+            if let Some(l) = g.as_mut() {
+                l.playing = playing;
+            }
+        }
+    }
+}
+
 static SKIPS: std::sync::Mutex<Option<(String, std::collections::HashSet<String>)>> = std::sync::Mutex::new(None);
 static SEEN: std::sync::Mutex<Option<std::collections::HashMap<String, std::time::Instant>>> = std::sync::Mutex::new(None);
 
@@ -1175,6 +1301,7 @@ pub fn run() {
                             if let Ok(mut g) = LAST_AT.lock() {
                                 *g = Some(std::time::Instant::now());
                             }
+                            tv_kick(h.clone());
                             h.emit("player", s)
                         }
                         Event::Queue(q, i) => {
@@ -1289,7 +1416,7 @@ pub fn run() {
             search, album, home, stations, start_radio, play, toggle, set_playing, next, prev, seek, volume, enqueue, play_next, jump, queue_remove, shuffle, repeat,
             playlists, playlist, playlist_create, playlist_rename, playlist_delete, playlist_add, playlist_remove, liked, liked_ids, toggle_like,
             recent, downloads, download, format_sizes, delete_download, settings, set_setting, server_info, pc_library,
-            import_spotify, pc_link, party_join, handoff_send, handoff_pull, handoff_offer, handoff_poll, speech, quick_search, image_data, save_image, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, system_outputs, spectrum, boost, get_boost, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
+            import_spotify, pc_link, party_join, tv_list, tv_connect, tv_disconnect, tv_current, handoff_send, handoff_pull, handoff_offer, handoff_poll, speech, quick_search, image_data, save_image, snapshot, new_window, stats, pc_call, pc_sync, party_hosts, party_call, open_mini, audio_outputs, set_audio_output, system_outputs, spectrum, boost, get_boost, artist, latest_release, lyrics, palette, levels, free_versions, download_as, ext_progress, ext_ended, ext_failed
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar Yokisfy");

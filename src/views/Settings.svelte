@@ -107,7 +107,7 @@
       </div>
     {/each}
     <div class="set-row col">
-      <span class="set-name">Desvanecer entre canciones · <span class="mono">{xf ? `${xf} s` : 'apagado'}</span></span>
+      <span class="set-name">Desvanecer entre canciones · <span class="set-val">{xf ? `${xf} s` : 'apagado'}</span></span>
       <input type="range" class="range" min="0" max="12" step="1" value={xf} style={`--p:${(xf / 12) * 100}%`} oninput={(e) => (ui.settings.crossfade = e.currentTarget.value)} onchange={(e) => save('crossfade', e.currentTarget.value)} aria-label="Segundos de desvanecimiento" />
     </div>
     {#if !ui.settings.mobile}
