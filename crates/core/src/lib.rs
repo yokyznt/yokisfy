@@ -296,6 +296,9 @@ impl Core {
         let me = server::host_name();
         if let Some(s) = saved.as_ref().filter(|s| s.name != me) {
             if pc::call(&self.client, s, "now", &serde_json::Value::Null).await.is_ok() {
+                if self.lib.setting("pc_code").filter(|c| !c.is_empty()).is_none() && !s.password.is_empty() {
+                    let _ = self.lib.set_setting("pc_code", &s.password);
+                }
                 return Ok(s.clone());
             }
         }

@@ -16,6 +16,9 @@
     linking = true
     try {
       await api.pcLink(code)
+      localStorage.setItem('yk-pc-linked', '1')
+      ui.settings = await api.settings()
+      code = ''
       await load()
     } catch (e) {
       error = String(e)
@@ -25,7 +28,7 @@
   let q = $state('')
 
   let retry
-  let linked = $derived(!!(ui.settings.pc_code || ui.settings.pc_server))
+  let linked = $derived(!!(ui.settings.pc_code || ui.settings.pc_server || localStorage.getItem('yk-pc-linked')))
 
   async function load(quiet = false) {
     clearTimeout(retry)
@@ -36,6 +39,7 @@
       tracks = r.tracks
       ui.pcCache = r
       state = 'ok'
+      localStorage.setItem('yk-pc-linked', '1')
     } catch (e) {
       error = String(e)
       state = linked ? 'waiting' : 'error'
@@ -52,14 +56,22 @@
   let tick = $state(performance.now())
   let syncing = $state(false)
 
+  let pollBusy = false
+  let pollWait = 0
+
   async function poll() {
+    if (pollBusy || document.visibilityState !== 'visible') return
+    if (pollWait > 0) return pollWait--
+    pollBusy = true
     try {
       const r = await api.pcCall('now')
       remote = r
       rAt = performance.now()
     } catch {
       remote = null
+      pollWait = 8
     }
+    pollBusy = false
   }
 
   $effect(() => {
@@ -80,7 +92,7 @@
       await api.pcCall('cmd', { c, v })
       setTimeout(poll, 250)
     } catch {
-      toast('No pude mandar la orden a tu PC')
+      toast('Tu PC no responde ahorita')
     }
   }
 
@@ -111,8 +123,8 @@
       await refreshPlaylists()
       const ids = await api.likedIds()
       for (const id of ids) ui.liked[id] = true
-    } catch (e) {
-      toast(String(e))
+    } catch {
+      toast('Tu PC no responde ahorita; se sincroniza sola cuando vuelva')
     }
     syncing = false
   }
